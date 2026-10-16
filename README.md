@@ -10,11 +10,6 @@ milestone, until the acceptance criteria are actually met.
 
 English · [简体中文](README.zh-CN.md)
 
-![Bigbrain demo: escalation score, milestone reviews, retrospective and savings report](docs/demo.gif)
-
-<sub>The demo runs the real CLI against the bundled mock server (`scripts/mock_server.py`), so the
-advisor replies are scripted. Re-record it with `vhs docs/demo.tape`.</sub>
-
 ## Why
 
 A strong model is most valuable for **judgement**: clarifying a fuzzy spec, choosing an
@@ -215,8 +210,8 @@ No. Tasks that score at or below the threshold stay local with no advisor call. 
 retrospective and report still run.
 
 **Can I try it without an API key?**
-Yes: `bash examples/minimal/run.sh` or `bash docs/demo.sh`. Both use scripted replies, so treat
-them as a tour of the mechanics, not a real review.
+Yes: `bash examples/minimal/run.sh`. It uses scripted replies, so treat it as a tour of the
+mechanics, not a real review.
 
 **Does it install anything with pip?**
 No. It is Python 3 standard library only.

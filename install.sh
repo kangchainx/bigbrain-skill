@@ -180,7 +180,7 @@ install_into() {
   if [ "$MODE" = "copy" ]; then
     mkdir -p "$target"
     # Everything except tests, repo-only docs/CI, session state and the
-    # user-level store.  The exclusions are deliberate: tests, docs/ (demo media)
+    # user-level store.  The exclusions are deliberate: tests, docs/
     # and .github/ are for the checkout, .bigbrain holds
     # this workspace's session transcripts, and experience/ is the user's own.
     ( cd "$SOURCE" && tar -cf - \
