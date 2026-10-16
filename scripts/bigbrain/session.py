@@ -16,9 +16,9 @@ import os
 import time
 from pathlib import Path
 
-from .config import EXIT_CONFIG, DualmindError, dualmind_home_dir
+from .config import EXIT_CONFIG, BigbrainError, bigbrain_home_dir
 
-SESSION_DIR_DEFAULT_ROOT = ".dualmind"
+SESSION_DIR_DEFAULT_ROOT = ".bigbrain"
 TRANSCRIPT_FILE = "transcript.json"
 REQUEST_TEMPLATE = "round-%02d-request.json"
 RESPONSE_TEMPLATE = "round-%02d-response.json"
@@ -42,7 +42,7 @@ STATE_STUCK = "stuck"
 
 
 def default_session_root(cwd=None):
-    """Where an unqualified session goes: ``<cwd>/.dualmind``.
+    """Where an unqualified session goes: ``<cwd>/.bigbrain``.
 
     Sessions are workspace state, so they stay next to the code (and are
     gitignored by install.sh), unlike the user-level experience store.
@@ -64,13 +64,13 @@ def resolve_session_dir(session=None, create=False, cwd=None):
 
 def require_session_dir(session):
     if not session:
-        raise DualmindError(
+        raise BigbrainError(
             "--session DIR is required (the directory printed by start)", EXIT_CONFIG
         )
     path = Path(session).expanduser()
     if not (path / TRANSCRIPT_FILE).is_file():
-        raise DualmindError(
-            "no dualmind session at %s (expected %s; run start first)"
+        raise BigbrainError(
+            "no bigbrain session at %s (expected %s; run start first)"
             % (path, path / TRANSCRIPT_FILE),
             EXIT_CONFIG,
         )
@@ -95,9 +95,9 @@ def load_transcript(session_dir):
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except OSError as exc:
-        raise DualmindError("cannot read session transcript %s: %s" % (path, exc), EXIT_CONFIG)
+        raise BigbrainError("cannot read session transcript %s: %s" % (path, exc), EXIT_CONFIG)
     except ValueError as exc:
-        raise DualmindError("session transcript %s is corrupt: %s" % (path, exc), EXIT_CONFIG)
+        raise BigbrainError("session transcript %s is corrupt: %s" % (path, exc), EXIT_CONFIG)
 
 
 def new_transcript(task, cfg, cwd=None, reasons=None):
@@ -169,7 +169,7 @@ def record_usage(transcript, usage, kind="round", model=None):
 
     ``kind`` separates ordinary rounds from the retrospective so the report can
     show where the tokens actually went.  ``usage`` is the dict produced by
-    :func:`dualmind.client.usage_of` -- absent usage counts as a call with zero
+    :func:`bigbrain.client.usage_of` -- absent usage counts as a call with zero
     tokens, never as a silent skip, so ``calls`` stays honest.
     """
     usage = usage or {}
@@ -224,7 +224,7 @@ CHARS_PER_TOKEN = 4
 #: the verification command, reading the failure, retrying.  25k is a
 #: deliberately conservative figure for a real repository -- large enough that
 #: the estimate is not a rounding error, small enough that the savings claim is
-#: not inflated by it.  Configurable via DUALMIND_EXECUTOR_TOKENS_PER_ROUND.
+#: not inflated by it.  Configurable via BIGBRAIN_EXECUTOR_TOKENS_PER_ROUND.
 DEFAULT_EXECUTOR_TOKENS_PER_ROUND = 25000
 
 #: Reported executor output is only the visible tip: the rest is file reads,
@@ -259,7 +259,7 @@ def executor_token_estimate(transcript, per_round=None):
 
     1. ``executor_tokens_override`` -- the caller measured it, believe it.
     2. ``per_round * rounds`` -- the documented per-round allowance, overridable
-       via ``DUALMIND_EXECUTOR_TOKENS_PER_ROUND``.
+       via ``BIGBRAIN_EXECUTOR_TOKENS_PER_ROUND``.
     3. reported chars of executor output, scaled up.
 
     The per-round term is a floor rather than a sum: a round where the executor
@@ -317,7 +317,7 @@ def is_inside(path, parent):
 
 
 def user_home_dir(env=None):
-    return dualmind_home_dir(env)
+    return bigbrain_home_dir(env)
 
 
 __all__ = [

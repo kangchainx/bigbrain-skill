@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Validate dualmind configuration and prove the endpoint actually answers.
+"""Validate bigbrain configuration and prove the endpoint actually answers.
 
-Thin wrapper -- all logic lives in ``dualmind/check_config.py``.  Kept at this
+Thin wrapper -- all logic lives in ``bigbrain/check_config.py``.  Kept at this
 path because every document, the skill instructions and the test suite refer to
 ``scripts/check_config.py``.
 
@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dualmind.check_config import main  # noqa: E402  (path setup must come first)
+from bigbrain.check_config import main  # noqa: E402  (path setup must come first)
 
 if __name__ == "__main__":
     sys.exit(main())

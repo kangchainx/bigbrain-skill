@@ -161,10 +161,10 @@ def score_task(
     }
 
 
-def banner_line(result, prefix="[DualMind]"):
+def banner_line(result, prefix="[Bigbrain]"):
     """The one-line human banner, e.g.
 
-    ``[DualMind] evaluating escalation score 0.72 > 0.60 -> escalate``
+    ``[Bigbrain] evaluating escalation score 0.72 > 0.60 -> escalate``
     """
     operator = ">" if result["decision"] == "escalate" else "<="
     return "%s evaluating escalation score %.2f %s %.2f -> %s" % (

@@ -5,7 +5,7 @@ Two artefacts land in the session directory:
     report.json   machine-readable, everything the numbers were derived from
     report.md     the same thing for a human
 
-The savings figure needs an honest baseline.  dualmind's claim is that only the
+The savings figure needs an honest baseline.  bigbrain's claim is that only the
 *judgement* is escalated: the advisor plans and reviews, while the bulk of the
 token volume -- reading files, writing code, running tests -- stays with the
 cheaper executor model.  So the comparison is "what if every token in this run
@@ -22,7 +22,7 @@ from .config import (
     DEFAULT_PRICE_IN,
     DEFAULT_PRICE_OUT,
     EXIT_CONFIG,
-    DualmindError,
+    BigbrainError,
 )
 from .io import write_json, write_text
 from .session import (
@@ -104,7 +104,7 @@ def build_report(transcript, cfg=None, session_dir=None):
     # The comparison: this run cost the executor's spend plus the advisor's
     # spend.  Routing the whole run to the premium model would have cost the
     # same total token volume at the premium rate -- that is the baseline, and
-    # the difference is what dualmind saved.
+    # the difference is what bigbrain saved.
     total_tokens = advisor_in + advisor_out + executor_tokens
     baseline_cost = cost_of(
         total_tokens * EXECUTOR_INPUT_SHARE,
@@ -236,7 +236,7 @@ def render_markdown(payload):
     criteria = payload["acceptance_criteria"]
 
     lines = [
-        "# dualmind report",
+        "# bigbrain report",
         "",
         "- task: %s" % (payload.get("task") or "(none)"),
         "- session: `%s`" % (payload.get("session") or "(none)"),
@@ -322,8 +322,8 @@ def render_markdown(payload):
     lines += [
         "## Cost estimate",
         "",
-        "Advisor priced at $%s/Mtok in, $%s/Mtok out (`DUALMIND_PRICE_IN` / `DUALMIND_PRICE_OUT`);"
-        " executor at $%s/$%s (`DUALMIND_EXECUTOR_PRICE_IN` / `_OUT`); baseline at $%s/$%s."
+        "Advisor priced at $%s/Mtok in, $%s/Mtok out (`BIGBRAIN_PRICE_IN` / `BIGBRAIN_PRICE_OUT`);"
+        " executor at $%s/$%s (`BIGBRAIN_EXECUTOR_PRICE_IN` / `_OUT`); baseline at $%s/$%s."
         % (
             pricing["advisor_in"],
             pricing["advisor_out"],
@@ -416,7 +416,7 @@ def state_label(transcript):
 def ensure_reportable(transcript):
     """Guard used by `finish` so a report is never written from a broken session."""
     if not isinstance(transcript, dict) or "rounds" not in transcript:
-        raise DualmindError("session transcript is not usable for a report", EXIT_CONFIG)
+        raise BigbrainError("session transcript is not usable for a report", EXIT_CONFIG)
     return transcript
 
 

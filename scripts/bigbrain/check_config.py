@@ -3,9 +3,9 @@
 Three things are being proved, and they are different:
 
 1. the configuration is present and well-formed,
-2. ``{DUALMIND_BASE_URL}/v1/messages`` really answers as a Messages API for the
+2. ``{BIGBRAIN_BASE_URL}/v1/messages`` really answers as a Messages API for the
    configured model, and
-3. ``{DUALMIND_BASE_URL}/v1/models`` lists the ids that endpoint actually
+3. ``{BIGBRAIN_BASE_URL}/v1/models`` lists the ids that endpoint actually
    serves, so a wrong model spelling can be corrected rather than guessed at.
 
 The ping is judged by *shape*, not by content.  The question is whether the
@@ -32,7 +32,7 @@ from .config import (
     EXIT_HTTP,
     EXIT_MODEL,
     EXIT_OK,
-    DualmindError,
+    BigbrainError,
     config_problems,
     load_config,
     mask_secret,
@@ -50,7 +50,7 @@ MAX_PING_REPLY_CHARS = 64
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="check_config.py",
-        description="Validate dualmind configuration and ping the advisor endpoint.",
+        description="Validate bigbrain configuration and ping the advisor endpoint.",
     )
     parser.add_argument("--json", action="store_true", help="emit a machine-readable JSON report")
     parser.add_argument("--no-call", action="store_true",
@@ -58,7 +58,7 @@ def build_parser():
     parser.add_argument("--list-models", action="store_true",
                         help="call GET {base}/v1/models and print the model ids it serves")
     parser.add_argument("--timeout", type=int, default=None,
-                        help="override DUALMIND_TIMEOUT for the ping")
+                        help="override BIGBRAIN_TIMEOUT for the ping")
     parser.add_argument("--quiet", action="store_true", help="suppress progress lines")
     return parser
 
@@ -146,8 +146,8 @@ def main(argv=None):
             "stage": "config",
             "exit_code": EXIT_CONFIG,
             "error": "; ".join(problems),
-            "hint": "set DUALMIND_BASE_URL and DUALMIND_API_KEY, or write them to "
-                    "~/.dualmind/config.json (see references/config.md)",
+            "hint": "set BIGBRAIN_BASE_URL and BIGBRAIN_API_KEY, or write them to "
+                    "~/.bigbrain/config.json (see references/config.md)",
             "base_url": base_url,
             "model": model,
             "api_key": mask_secret(cfg["api_key"]),
@@ -194,7 +194,7 @@ def main(argv=None):
     }
     try:
         response = post_messages(cfg, request, timeout=args.timeout)
-    except DualmindError as exc:
+    except BigbrainError as exc:
         payload.update(
             {
                 "ok": False,
@@ -205,12 +205,12 @@ def main(argv=None):
             }
         )
         if exc.exit_code == 3:
-            payload["hint"] = "check DNS, VPN, proxy settings and DUALMIND_BASE_URL reachability"
+            payload["hint"] = "check DNS, VPN, proxy settings and BIGBRAIN_BASE_URL reachability"
         elif exc.exit_code == 4:
-            payload["hint"] = ("the API key was rejected; verify DUALMIND_API_KEY (it is sent as "
+            payload["hint"] = ("the API key was rejected; verify BIGBRAIN_API_KEY (it is sent as "
                                "both x-api-key and Authorization: Bearer)")
         elif exc.exit_code == EXIT_MODEL:
-            payload["hint"] = ("the endpoint returned 404; check DUALMIND_MODEL and that "
+            payload["hint"] = ("the endpoint returned 404; check BIGBRAIN_MODEL and that "
                                "{base}/v1/messages is correct")
         return report(payload, args.json, False)
 
@@ -219,7 +219,7 @@ def main(argv=None):
     warning = ""
     try:
         text = response.text
-    except DualmindError as exc:
+    except BigbrainError as exc:
         payload.update(
             {
                 "ok": False,
@@ -242,8 +242,8 @@ def main(argv=None):
                 "exit_code": EXIT_HTTP,
                 "error": reason,
                 "hint": ("the request reached something that is not a Messages API endpoint; check "
-                         "DUALMIND_BASE_URL points at the API root (no trailing /v1) and that "
-                         "DUALMIND_MODEL is a model that endpoint serves "
+                         "BIGBRAIN_BASE_URL points at the API root (no trailing /v1) and that "
+                         "BIGBRAIN_MODEL is a model that endpoint serves "
                          "(see scripts/check_config.py --list-models)"),
                 "pinged": True,
                 "http_status": response.status,
@@ -311,16 +311,16 @@ def list_models_command(cfg, args, payload):
     """
     try:
         body = list_models(cfg, timeout=args.timeout)
-    except DualmindError as exc:
+    except BigbrainError as exc:
         payload.update(
             {"ok": False, "stage": "models", "exit_code": exc.exit_code, "error": str(exc)}
         )
         if exc.exit_code == EXIT_MODEL:
-            payload["hint"] = ("this endpoint does not expose /v1/models; set DUALMIND_MODEL from "
+            payload["hint"] = ("this endpoint does not expose /v1/models; set BIGBRAIN_MODEL from "
                                "the provider's documentation instead")
         else:
-            payload["hint"] = ("GET {base}/v1/models failed; check DUALMIND_BASE_URL and "
-                               "DUALMIND_API_KEY")
+            payload["hint"] = ("GET {base}/v1/models failed; check BIGBRAIN_BASE_URL and "
+                               "BIGBRAIN_API_KEY")
         return report(payload, args.json, False)
 
     ids = model_ids(body)
@@ -339,7 +339,7 @@ def list_models_command(cfg, args, payload):
         payload["warning"] = "the endpoint returned no recognizable model ids"
     elif configured not in ids:
         payload["warning"] = (
-            "DUALMIND_MODEL=%s is not in the list this endpoint reports; pick one of the ids above"
+            "BIGBRAIN_MODEL=%s is not in the list this endpoint reports; pick one of the ids above"
             % configured
         )
 
@@ -360,7 +360,7 @@ def list_models_command(cfg, args, payload):
 def run(argv=None):
     try:
         return main(argv)
-    except DualmindError as exc:  # pragma: no cover - defensive
+    except BigbrainError as exc:  # pragma: no cover - defensive
         eprint("FAIL: %s" % exc)
         return exc.exit_code
     except KeyboardInterrupt:  # pragma: no cover

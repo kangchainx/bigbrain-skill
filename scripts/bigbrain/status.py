@@ -1,6 +1,6 @@
 """Session status reporting: where a run is, in one screen.
 
-Also carries the audit that proves dualmind never touched a user instruction
+Also carries the audit that proves bigbrain never touched a user instruction
 file: :func:`audit_payload` lists the AGENTS.md-shaped files under a root and
 their hashes, so a caller can snapshot before and after and compare.
 """
@@ -103,7 +103,7 @@ def load_summary(session_dir):
 def render_text(payload):
     """A compact human rendering of :func:`summary`."""
     lines = [
-        "dualmind session %s" % (payload.get("session") or ""),
+        "bigbrain session %s" % (payload.get("session") or ""),
         "  task      : %s" % (payload.get("task") or ""),
         "  status    : %s" % payload.get("status_label"),
         "  rounds    : %s of %s" % (payload.get("rounds_used"), payload.get("max_rounds")),
@@ -175,7 +175,7 @@ def audit_payload(root, before=None):
 
     ``before`` is an optional earlier fingerprint mapping; when supplied, the
     payload says which files changed, which is exactly the check the test suite
-    runs to prove dualmind leaves AGENTS.md alone.
+    runs to prove bigbrain leaves AGENTS.md alone.
     """
     found = audit_for_protected_files(root)
     after = protected_fingerprint(found)

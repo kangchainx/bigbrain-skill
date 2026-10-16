@@ -2,11 +2,11 @@
 
 Escalate to the advisor when the work is likely to need architectural judgement, or when a
 wrong first move would be expensive to unwind. Rather than a mental checklist that drifts
-toward whatever is convenient, DualMind computes the decision:
+toward whatever is convenient, Bigbrain computes the decision:
 
 ```bash
-python3 scripts/dualmind_cli.py score --files-estimated 4 --ambiguity 0.5 --high-risk migration
-# [DualMind] evaluating escalation score 0.52 <= 0.60 -> stay_local
+python3 scripts/bigbrain_cli.py score --files-estimated 4 --ambiguity 0.5 --high-risk migration
+# [Bigbrain] evaluating escalation score 0.52 <= 0.60 -> stay_local
 # decision: stay_local
 # score   : 0.52 (threshold 0.60)
 # signals : 4 file(s) changed; ambiguity 0.50; high-risk: migration
@@ -57,8 +57,8 @@ below-threshold refusal in `start`.
 
 ## Configuration
 
-Set these in `${DUALMIND_HOME:-$HOME/.dualmind}/config.json`, in
-`~/.config/dualmind/config.env`, or in the environment. Environment wins.
+Set these in `${BIGBRAIN_HOME:-$HOME/.bigbrain}/config.json`, in
+`~/.config/bigbrain/config.env`, or in the environment. Environment wins.
 
 ```json
 {
@@ -68,11 +68,11 @@ Set these in `${DUALMIND_HOME:-$HOME/.dualmind}/config.json`, in
 ```
 
 ```bash
-export DUALMIND_THRESHOLD=0.45
-export DUALMIND_WEIGHTS='{"files":0.5,"ambiguity":0.2,"failures":0.1,"risk":0.1,"user":0.1}'
+export BIGBRAIN_THRESHOLD=0.45
+export BIGBRAIN_WEIGHTS='{"files":0.5,"ambiguity":0.2,"failures":0.1,"risk":0.1,"user":0.1}'
 ```
 
-A malformed `DUALMIND_WEIGHTS` is a configuration error, reported by `check_config.py` and by
+A malformed `BIGBRAIN_WEIGHTS` is a configuration error, reported by `check_config.py` and by
 the CLI, not silently ignored. All-zero weights fall back to the defaults with a warning.
 
 Per-invocation overrides: `score --threshold 0.4`, `score --weights '{"files":1}'`.
@@ -82,7 +82,7 @@ Per-invocation overrides: `score --threshold 0.4`, `score --weights '{"files":1}
 `start` scores the task before opening the session:
 
 ```bash
-python3 scripts/dualmind_cli.py start --task "..." --files-estimated 4 --ambiguity 0.6
+python3 scripts/bigbrain_cli.py start --task "..." --files-estimated 4 --ambiguity 0.6
 ```
 
 Below the threshold it refuses (exit `2`) and says so, rather than spending advisor tokens

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A tiny, local, Anthropic-compatible Messages API server for testing dualmind.
+"""A tiny, local, Anthropic-compatible Messages API server for testing bigbrain.
 
 It implements just enough of POST /v1/messages -- plus GET /v1/models -- to
 exercise the whole skill offline: scripted multi-round advisor replies, auth
@@ -52,7 +52,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dualmind import fixtures  # noqa: E402  (path setup must come first)
+from bigbrain import fixtures  # noqa: E402  (path setup must come first)
 
 DEFAULT_API_KEY = "test-key"
 DEFAULT_SCENARIO = "milestones"
@@ -234,7 +234,7 @@ def sse_events(text, model, usage, stop_reason="end_turn"):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "dualmind-mock/2.1"
+    server_version = "bigbrain-mock/2.1"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):

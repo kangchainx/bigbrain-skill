@@ -1,9 +1,9 @@
 ---
-name: dualmind
+name: bigbrain
 description: Escalate complex or large coding work to an Opus advisor that plans, reviews and keeps pushing until the acceptance criteria are met. Use for large features, multi-file changes, refactors across module boundaries, ambiguous requirements, migrations, security or concurrency work, or when a previous attempt failed twice. Do NOT use for one-line fixes, typos, formatting, or explain-only questions.
 ---
 
-# dualmind
+# Bigbrain
 
 You are the **executor**. A separate advisor model (default `claude-opus-5-5`) plans,
 reviews and directs. Escalate complex work to it in a milestone loop, act on each
@@ -12,14 +12,14 @@ instruction, and report back — instead of stopping to ask the user for every d
 ## Step 0 — always, before anything else: load your lessons
 
 ```bash
-python3 <skill>/scripts/dualmind_cli.py lessons list --limit 10
+python3 <skill>/scripts/bigbrain_cli.py lessons list --limit 10
 ```
 
 This prints the highest-ranked lessons from your previous sessions **on this machine**.
-Read them and follow them while DualMind is active. They are how this skill learns: a
+Read them and follow them while Bigbrain is active. They are how this skill learns: a
 correction you needed last week should not need to be made again.
 
-Lessons live in a user-level store (`~/.dualmind/experience/`) and are injected into every
+Lessons live in a user-level store (`~/.bigbrain/experience/`) and are injected into every
 advisor request automatically. **No code path in this skill ever creates, reads for write,
 or modifies any `AGENTS.md`, `CLAUDE.md`, or global Codex/Claude configuration file.** Your
 own global `~/.codex/AGENTS.md` is untouched by design; lessons apply only while this skill
@@ -43,11 +43,11 @@ If the check fails, finish the task yourself as best you can, or report the bloc
 Score it:
 
 ```bash
-python3 <skill>/scripts/dualmind_cli.py score \
+python3 <skill>/scripts/bigbrain_cli.py score \
   --files-estimated 4 --ambiguity 0.4 --high-risk migration
 ```
 
-Prints `[DualMind] evaluating escalation score 0.72 > 0.60 -> escalate`. Escalate when the
+Prints `[Bigbrain] evaluating escalation score 0.72 > 0.60 -> escalate`. Escalate when the
 decision is `escalate`; do the work locally when it is `stay_local`. `--user-request` forces
 escalation when the user explicitly asked for the advisor. Weights and the threshold are
 configurable — see `references/triggers.md`.
@@ -58,10 +58,10 @@ configurable — see `references/triggers.md`.
 (3-ish, each with its own steps and acceptance criteria), and any questions.
 
 ```bash
-python3 <skill>/scripts/dualmind_cli.py start \
+python3 <skill>/scripts/bigbrain_cli.py start \
   --task "<what must change, and the acceptance criteria>" \
   --context-file path/to/relevant.py --context-file path/to/design.md \
-  --session .dualmind/session-<name>
+  --session .bigbrain/session-<name>
 ```
 
 **Answer its questions by reading the repository yourself** — it cannot see your tree. Never
@@ -73,8 +73,8 @@ command, and record the real output.
 **3. Report each milestone for review** — not the whole task:
 
 ```bash
-python3 <skill>/scripts/dualmind_cli.py report \
-  --session .dualmind/session-<name> --result-file report-m1.md
+python3 <skill>/scripts/bigbrain_cli.py report \
+  --session .bigbrain/session-<name> --result-file report-m1.md
 ```
 
 Include: steps completed, files changed with a diff summary, the **verbatim** test/verify
@@ -84,7 +84,7 @@ one verdict for that milestone: `approve`, `revise` or `reject`.
 **4. If you cannot make progress**, re-escalate with the failure rather than retrying blindly:
 
 ```bash
-python3 <skill>/scripts/dualmind_cli.py stuck --session .dualmind/session-<name> \
+python3 <skill>/scripts/bigbrain_cli.py stuck --session .bigbrain/session-<name> \
   --reason "the eviction test passes but the key order is wrong" \
   --failure-file failing-output.txt --attempts 2
 ```
@@ -107,7 +107,7 @@ Read the **exit code** — that is the control signal:
 `status=done` alone does **not** end the loop: the advisor must also mark every criterion
 met in `criteria_status`. A `done` with unproven criteria continues, with a note on stderr.
 
-When the loop ends for any reason, DualMind runs a **retrospective** automatically (one more
+When the loop ends for any reason, Bigbrain runs a **retrospective** automatically (one more
 advisor call), saves the lessons it returns, and writes `report.md` + `report.json` into the
 session directory. You do not need to trigger it; to do it by hand, use `finish`.
 
@@ -115,18 +115,18 @@ session directory. You do not need to trigger it; to do it by hand, use `finish`
 
 ```bash
 python3 scripts/check_config.py                                  # OK
-python3 scripts/dualmind_cli.py lessons list --limit 10          # step 0
-python3 scripts/dualmind_cli.py score --files-estimated 4 --ambiguity 0.4
+python3 scripts/bigbrain_cli.py lessons list --limit 10          # step 0
+python3 scripts/bigbrain_cli.py score --files-estimated 4 --ambiguity 0.4
 # -> escalate
-python3 scripts/dualmind_cli.py start \
+python3 scripts/bigbrain_cli.py start \
   --task "Add a TTL cache layer to cache.py with tests; acceptance: TTL expiry by an \
           injected clock, bounded maxsize with the evicted key asserted, suite green" \
-  --context-file cache.py --session .dualmind/session-cache
+  --context-file cache.py --session .bigbrain/session-cache
 # -> milestones m1/m2/m3 + global criteria
-python3 scripts/dualmind_cli.py report --session .dualmind/session-cache --result-file r-m1.md
+python3 scripts/bigbrain_cli.py report --session .bigbrain/session-cache --result-file r-m1.md
 # -> verdict approve for m1
 # ... continue per milestone; on a revise, fix exactly what it named ...
-python3 scripts/dualmind_cli.py report --session .dualmind/session-cache --result-file r-m3.md
+python3 scripts/bigbrain_cli.py report --session .bigbrain/session-cache --result-file r-m3.md
 # -> status=done, all criteria met -> DONE, retrospective, report written
 ```
 
@@ -135,7 +135,7 @@ Fuller walkthrough: `examples/minimal/README.md`.
 ## Offline / dry-run
 
 `--dry-run` prints the exact request payload without sending it or writing the session.
-`--mock FILE` (or `DUALMIND_MOCK`) replays scripted advisor replies from a JSON list. Both
+`--mock FILE` (or `BIGBRAIN_MOCK`) replays scripted advisor replies from a JSON list. Both
 are for testing only — never present a mock run as a real advisor review.
 
 ## Files
@@ -144,7 +144,7 @@ are for testing only — never present a mock run as a real advisor review.
 - `references/triggers.md` — escalation scoring: signals, weights, threshold
 - `references/experience.md` — the lessons store, and what it deliberately never touches
 - `references/advisor-system-prompt.md` — the advisor's system prompt (sent each round)
-- `scripts/dualmind_cli.py` — the CLI: `score`, `start`, `report`, `stuck`, `finish`, `status`, `lessons`
+- `scripts/bigbrain_cli.py` — the CLI: `score`, `start`, `report`, `stuck`, `finish`, `status`, `lessons`
 - `scripts/check_config.py`, `scripts/advisor.py` — kept working; thin wrappers over the CLI
-- `scripts/dualmind/` — the package: config, client, schema, scoring, session, loop,
+- `scripts/bigbrain/` — the package: config, client, schema, scoring, session, loop,
   experience, agents_md, report, status, cli

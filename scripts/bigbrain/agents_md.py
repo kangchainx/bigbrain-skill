@@ -1,4 +1,4 @@
-"""Guard: dualmind never creates or modifies an AGENTS.md.
+"""Guard: bigbrain never creates or modifies an AGENTS.md.
 
 Lessons live in a user-level experience store and are injected into advisor
 requests while the skill is active.  They do **not** belong in a repository's
@@ -9,13 +9,13 @@ and silently editing them would change behaviour long after the session ended.
 
 This module exists so that rule is enforced in one place rather than remembered
 in many.  It has no write path at all: it only *recognises* a protected
-filename and refuses.  :func:`dualmind.io.write_text` and
-:func:`dualmind.io.write_json` call :func:`guard_write` on every write the
+filename and refuses.  :func:`bigbrain.io.write_text` and
+:func:`bigbrain.io.write_json` call :func:`guard_write` on every write the
 package makes, so a future feature that tries to persist lessons into an
 instruction file fails loudly instead of succeeding quietly.
 
 There is deliberately no read helper here either: the rule is that no code path
-creates, reads-for-write, or modifies these files.  Nothing in dualmind needs
+creates, reads-for-write, or modifies these files.  Nothing in bigbrain needs
 their contents, so nothing is exposed to read them.
 """
 
@@ -24,9 +24,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .config import EXIT_CONFIG, DualmindError
+from .config import EXIT_CONFIG, BigbrainError
 
-# Filenames that belong to the user's agent tooling, never to dualmind.
+# Filenames that belong to the user's agent tooling, never to bigbrain.
 PROTECTED_FILENAMES = frozenset(
     name.lower()
     for name in (
@@ -50,7 +50,7 @@ PROTECTED_DIRNAMES = frozenset(
 
 
 def is_protected_path(path):
-    """True when ``path`` names an instruction/config file dualmind must not touch."""
+    """True when ``path`` names an instruction/config file bigbrain must not touch."""
     try:
         name = Path(path).name.lower()
     except (TypeError, ValueError):
@@ -58,7 +58,7 @@ def is_protected_path(path):
     if name not in PROTECTED_FILENAMES:
         return False
     # A file simply *called* AGENTS.md is enough to refuse; being conservative
-    # here costs nothing, because dualmind has no legitimate reason to write one
+    # here costs nothing, because bigbrain has no legitimate reason to write one
     # anywhere, in any directory.
     return True
 
@@ -82,8 +82,8 @@ def guard_write(path):
     ``path = guard_write(path)``.
     """
     if is_protected_path(path):
-        raise DualmindError(
-            "refusing to write %s: dualmind never creates or modifies AGENTS.md or any "
+        raise BigbrainError(
+            "refusing to write %s: bigbrain never creates or modifies AGENTS.md or any "
             "other agent instruction/config file. Lessons are stored in the user-level "
             "experience directory instead (see references/experience.md)." % path,
             EXIT_CONFIG,
@@ -94,7 +94,7 @@ def guard_write(path):
 def audit_for_protected_files(root):
     """List protected filenames found anywhere under ``root`` (read-only scan).
 
-    Used by tests and by ``status --audit`` to prove dualmind left the user's
+    Used by tests and by ``status --audit`` to prove bigbrain left the user's
     instruction files alone.  This only enumerates names; it never opens them.
     """
     found = []
@@ -114,7 +114,7 @@ def protected_fingerprint(paths):
     """sha256 of every protected file that exists, keyed by path.
 
     Tests compare two snapshots: identical fingerprints before and after a run
-    prove dualmind did not touch any instruction file.
+    prove bigbrain did not touch any instruction file.
     """
     import hashlib
 

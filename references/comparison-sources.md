@@ -47,10 +47,10 @@ Gemini, OpenAI, Azure, X.AI, Ollama, custom).
 
 ## What the table is actually contrasting
 
-DualMind sits in the same family as these three — an agent handing work to a stronger model —
+Bigbrain sits in the same family as these three — an agent handing work to a stronger model —
 so the table is about **how the handoff is decided and bounded**, not about which is better:
 
-| Axis | DualMind | cc-plugin-codex | codex-plugin-cc | pal-mcp-server |
+| Axis | Bigbrain | cc-plugin-codex | codex-plugin-cc | pal-mcp-server |
 |------|----------|-----------------|-----------------|----------------|
 | Direction | executor → advisor | Codex → Claude Code | Claude Code → Codex | host agent → many providers |
 | Decided by | computed score vs. configurable threshold | user command, or turn-end gate | user command, or gate | host agent / user picks a tool |
@@ -63,9 +63,9 @@ feature gaps:
 
 1. **The gate is inverted.** cc-plugin-codex and codex-plugin-cc offer an optional turn-end
    gate that fires a review after edit-producing turns; their READMEs warn about usage drain,
-   which is why it is off by default. DualMind never fires on a timer or a turn boundary — it
+   which is why it is off by default. Bigbrain never fires on a timer or a turn boundary — it
    scores the task and escalates on a threshold, so the cost is bounded by the decision, not
    by how many times you happened to edit a file.
 2. **Completion is defined by criteria, not by the advisor's word.** None of the three READMEs
-   mentions a milestone loop. DualMind's loop cannot end on `status=done` alone: every
+   mentions a milestone loop. Bigbrain's loop cannot end on `status=done` alone: every
    acceptance criterion must be marked met, and a `done` without that keeps looping.

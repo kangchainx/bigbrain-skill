@@ -34,7 +34,7 @@ from .config import (
     EXIT_MAX_ROUNDS,
     EXIT_OK,
     AdvisorParseError,
-    DualmindError,
+    BigbrainError,
     load_system_prompt,
 )
 from .io import Progress, eprint, write_json
@@ -103,7 +103,7 @@ def lessons_appendix(lessons):
         "",
         "## Lessons from previous sessions with this user",
         "",
-        "These were recorded by earlier dualmind runs on this machine, at user level.",
+        "These were recorded by earlier bigbrain runs on this machine, at user level.",
         "They describe how this user works and where the executor tends to slip. Treat",
         "them as strong preferences: they do not override the task, but a plan that",
         "ignores them without saying why will be rejected.",
@@ -140,13 +140,13 @@ def load_mock_script(path):
     try:
         data = json.loads(open(path, "r", encoding="utf-8").read())
     except OSError as exc:
-        raise DualmindError("cannot read mock script %s: %s" % (path, exc), EXIT_CONFIG)
+        raise BigbrainError("cannot read mock script %s: %s" % (path, exc), EXIT_CONFIG)
     except ValueError as exc:
-        raise DualmindError("mock script %s is not valid JSON: %s" % (path, exc), EXIT_CONFIG)
+        raise BigbrainError("mock script %s is not valid JSON: %s" % (path, exc), EXIT_CONFIG)
     if isinstance(data, dict):
         data = data.get("responses", data.get("rounds"))
     if not isinstance(data, list) or not data:
-        raise DualmindError("mock script %s must be a non-empty JSON list of advisor replies" % path)
+        raise BigbrainError("mock script %s must be a non-empty JSON list of advisor replies" % path)
     return data
 
 
@@ -206,7 +206,7 @@ def send_once(
 
     if mock_entries is not None:
         if mock_index >= len(mock_entries):
-            raise DualmindError(
+            raise BigbrainError(
                 "mock script exhausted after %d replies; add more entries to continue" % mock_index,
                 EXIT_BAD_JSON,
             )
@@ -254,7 +254,7 @@ def _env_on(name, default="1"):
 
 def _report_cap():
     try:
-        return max(100, int(os.environ.get("DUALMIND_REPORT_CAP", DEFAULT_REPORT_CAP)))
+        return max(100, int(os.environ.get("BIGBRAIN_REPORT_CAP", DEFAULT_REPORT_CAP)))
     except ValueError:
         return DEFAULT_REPORT_CAP
 
@@ -334,7 +334,7 @@ def _retry_max_tokens(cfg, truncated):
     """Budget for the retry call, and a note describing what was capped.
 
     A truncated reply gets double the configured budget, clamped to
-    ``DUALMIND_MAX_TOKENS_CAP`` -- doubling without a ceiling would let a model
+    ``BIGBRAIN_MAX_TOKENS_CAP`` -- doubling without a ceiling would let a model
     that ignores "be concise" answer at whatever length it likes, which is the
     problem the ceiling exists to bound.  A malformed (but complete) reply keeps
     the normal budget: it was never too long.
@@ -346,7 +346,7 @@ def _retry_max_tokens(cfg, truncated):
     wanted = base * 2
     granted = min(wanted, cap)
     if granted < wanted:
-        return granted, " (capped by DUALMIND_MAX_TOKENS_CAP)"
+        return granted, " (capped by BIGBRAIN_MAX_TOKENS_CAP)"
     return granted, ""
 
 
@@ -373,7 +373,7 @@ def run_round(
         progress.round(round_number, max_rounds)
 
     full_messages = list(transcript["messages"]) + [{"role": "user", "content": user_content}]
-    if _env_on("DUALMIND_COMPRESS"):
+    if _env_on("BIGBRAIN_COMPRESS"):
         messages = compress_messages(transcript["messages"], user_content)
     else:
         messages = full_messages
@@ -414,23 +414,23 @@ def run_round(
         truncated = meta.get("stop_reason") == "max_tokens"
         if truncated:
             eprint(
-                "[DualMind] round %d reply hit the output limit (stop_reason=max_tokens, "
+                "[Bigbrain] round %d reply hit the output limit (stop_reason=max_tokens, "
                 "%s output tokens): the JSON was truncated mid-object"
                 % (round_number, (meta.get("usage") or {}).get("output_tokens", "?"))
             )
         else:
-            eprint("[DualMind] round %d reply was not valid advisor JSON: %s" % (round_number, exc))
+            eprint("[Bigbrain] round %d reply was not valid advisor JSON: %s" % (round_number, exc))
 
         retry_max_tokens, budget_note = _retry_max_tokens(cfg, truncated)
         if truncated:
             instruction = CONCISE_INSTRUCTION
             eprint(
-                "[DualMind] retrying once with a be-concise instruction at max_tokens=%d%s"
+                "[Bigbrain] retrying once with a be-concise instruction at max_tokens=%d%s"
                 % (retry_max_tokens, budget_note)
             )
         else:
             instruction = REPAIR_INSTRUCTION % "; ".join(errors)
-            eprint("[DualMind] requesting one repair retry")
+            eprint("[Bigbrain] requesting one repair retry")
 
         repair_messages = messages + [
             {"role": "assistant", "content": raw or ""},
@@ -685,27 +685,27 @@ def finish(session_dir, transcript, normalised, progress=None, dry_run=False):
 
     if state == STATE_BLOCKED:
         save_transcript(session_dir, transcript)
-        eprint("[DualMind] BLOCKED: %s" % detail.get("reason"))
+        eprint("[Bigbrain] BLOCKED: %s" % detail.get("reason"))
         return code
 
     if state == STATE_DONE:
         save_transcript(session_dir, transcript)
-        eprint("[DualMind] DONE: status=done and every acceptance criterion is met")
+        eprint("[Bigbrain] DONE: status=done and every acceptance criterion is met")
         return code
 
     if state == STATE_MAX_ROUNDS:
         save_transcript(session_dir, transcript)
         eprint(
-            "[DualMind] MAX ROUNDS: %d of %d rounds used without status=done + all criteria met"
+            "[Bigbrain] MAX ROUNDS: %d of %d rounds used without status=done + all criteria met"
             % (len(transcript["rounds"]), transcript.get("max_rounds"))
         )
         if detail.get("note"):
-            eprint("[DualMind] %s" % detail["note"])
+            eprint("[Bigbrain] %s" % detail["note"])
         return code
 
     save_transcript(session_dir, transcript)
     if detail.get("note"):
-        eprint("[DualMind] %s" % detail["note"])
+        eprint("[Bigbrain] %s" % detail["note"])
     return code
 
 
@@ -847,8 +847,8 @@ def run_retrospective(
         raw, usage, meta, mock_index = send_once(
             cfg, system_prompt, messages, mock_entries, mock_index, kind=KIND_RETROSPECTIVE
         )
-    except DualmindError as exc:
-        eprint("[DualMind] retrospective call failed: %s" % exc)
+    except BigbrainError as exc:
+        eprint("[Bigbrain] retrospective call failed: %s" % exc)
         return None, mock_index
 
     meta["elapsed_ms"] = 0
@@ -859,7 +859,7 @@ def run_retrospective(
     try:
         normalised = schema.parse_advisor_reply(raw, expect="retrospective")
     except AdvisorParseError as exc:
-        eprint("[DualMind] retrospective reply was not usable: %s" % exc)
+        eprint("[Bigbrain] retrospective reply was not usable: %s" % exc)
         write_json(
             Path(session_dir) / RETRO_RESPONSE_FILE,
             {"raw": raw, "parse_errors": exc.errors or [str(exc)], "meta": meta},
@@ -879,7 +879,7 @@ def run_retrospective(
     # stderr, not stdout: the summary is prose and stdout is reserved for the
     # single final JSON object.  Metadata about the retrospective (recorded=True,
     # lessons_saved=N) is added to that object by render_final.
-    eprint("[DualMind] retrospective: %s" % (normalised.get("summary") or "(no summary)"))
+    eprint("[Bigbrain] retrospective: %s" % (normalised.get("summary") or "(no summary)"))
     return normalised, mock_index
 
 

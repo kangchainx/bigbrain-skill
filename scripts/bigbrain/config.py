@@ -1,9 +1,9 @@
-"""Configuration for the dualmind skill.
+"""Configuration for the bigbrain skill.
 
 Python 3 standard library only -- no third-party dependencies.
 
-Precedence for every setting: process environment > ``~/.dualmind/config.json``
-> ``~/.config/dualmind/config.env`` > built-in defaults.
+Precedence for every setting: process environment > ``~/.bigbrain/config.json``
+> ``~/.config/bigbrain/config.env`` > built-in defaults.
 
 Nothing in this module ever prints an API key.  Use :func:`mask_secret` for any
 diagnostic output that needs to identify one.
@@ -106,9 +106,9 @@ DEFAULT_LESSON_CAP = 50
 LESSON_MERGE_RATIO = 0.85
 LESSON_JACCARD_RATIO = 0.6
 
-CONFIG_ENV_FILE = Path(os.path.expanduser("~/.config/dualmind/config.env"))
+CONFIG_ENV_FILE = Path(os.path.expanduser("~/.config/bigbrain/config.env"))
 
-# Exit codes shared by every dualmind entry point.
+# Exit codes shared by every bigbrain entry point.
 EXIT_OK = 0
 EXIT_CONFIG = 2
 EXIT_NETWORK = 3
@@ -127,7 +127,7 @@ LESSON_KINDS = ("codex_shortcoming", "user_preference", "workflow")
 _TRUEY = ("1", "true", "yes", "on")
 
 
-class DualmindError(Exception):
+class BigbrainError(Exception):
     """Fatal error carrying the process exit code that should be returned."""
 
     def __init__(self, message, exit_code=EXIT_HTTP, **extra):
@@ -136,7 +136,7 @@ class DualmindError(Exception):
         self.extra = extra
 
 
-class AdvisorParseError(DualmindError):
+class AdvisorParseError(BigbrainError):
     """The advisor reply could not be parsed or did not match the schema."""
 
     def __init__(self, message, errors=None):
@@ -234,7 +234,7 @@ def _as_int(raw, name, problems, default, minimum=1):
     """Parse an integer setting.
 
     ``minimum`` is 1 by default (counts, sizes); pass 0 for settings where zero
-    is a meaningful value, like ``DUALMIND_RETRIES=0`` meaning "never retry".
+    is a meaningful value, like ``BIGBRAIN_RETRIES=0`` meaning "never retry".
     """
     if raw is None or str(raw).strip() == "":
         return default
@@ -271,7 +271,7 @@ def _as_float(raw, name, problems, default, low=None, high=None):
 # --------------------------------------------------------------------------
 
 
-def parse_weights(raw, problems, source="DUALMIND_WEIGHTS"):
+def parse_weights(raw, problems, source="BIGBRAIN_WEIGHTS"):
     """Parse a weights mapping from a JSON string or a dict.
 
     Unknown keys are ignored; missing keys keep their default.  Values are
@@ -310,20 +310,20 @@ def parse_weights(raw, problems, source="DUALMIND_WEIGHTS"):
     return weights
 
 
-def dualmind_home_dir(env=None):
-    """The user-level dualmind directory (default ``~/.dualmind``)."""
+def bigbrain_home_dir(env=None):
+    """The user-level bigbrain directory (default ``~/.bigbrain``)."""
     env = os.environ if env is None else env
-    raw = (env.get("DUALMIND_HOME") or "").strip()
-    return Path(raw).expanduser() if raw else Path(os.path.expanduser("~/.dualmind"))
+    raw = (env.get("BIGBRAIN_HOME") or "").strip()
+    return Path(raw).expanduser() if raw else Path(os.path.expanduser("~/.bigbrain"))
 
 
 def json_config_path(env=None):
-    """``~/.dualmind/config.json`` (or ``$DUALMIND_HOME/config.json``)."""
+    """``~/.bigbrain/config.json`` (or ``$BIGBRAIN_HOME/config.json``)."""
     env = os.environ if env is None else env
-    raw = (env.get("DUALMIND_CONFIG_FILE") or "").strip()
+    raw = (env.get("BIGBRAIN_CONFIG_FILE") or "").strip()
     if raw:
         return Path(raw).expanduser()
-    return dualmind_home_dir(env) / "config.json"
+    return bigbrain_home_dir(env) / "config.json"
 
 
 # --------------------------------------------------------------------------
@@ -332,7 +332,7 @@ def json_config_path(env=None):
 
 
 def load_config(env=None, config_file=None, json_file=None):
-    """Load dualmind configuration.
+    """Load bigbrain configuration.
 
     Returns a dict; problems are collected under the ``problems`` key rather
     than raised, so callers can decide whether they are fatal.
@@ -345,7 +345,7 @@ def load_config(env=None, config_file=None, json_file=None):
     sources = {}
 
     json_path = json_config_path(env) if json_file is None else Path(json_file)
-    json_vals = parse_json_file(json_path, problems, label="dualmind config")
+    json_vals = parse_json_file(json_path, problems, label="bigbrain config")
     sources["json_file"] = str(json_path)
     sources["json_file_present"] = json_path.is_file()
 
@@ -360,17 +360,17 @@ def load_config(env=None, config_file=None, json_file=None):
             return file_vals[name], "file"
         return fallback, "default"
 
-    use_anthropic_raw, _ = raw("DUALMIND_USE_ANTHROPIC_ENV", "")
+    use_anthropic_raw, _ = raw("BIGBRAIN_USE_ANTHROPIC_ENV", "")
     use_anthropic = str(use_anthropic_raw).strip().lower() in _TRUEY
 
-    base_url, src = raw("DUALMIND_BASE_URL")
+    base_url, src = raw("BIGBRAIN_BASE_URL")
     if not base_url and use_anthropic:
         base_url, src = raw("ANTHROPIC_BASE_URL")
         if src != "default":
             src = "anthropic-env"
     sources["base_url"] = src
 
-    api_key, src = raw("DUALMIND_API_KEY")
+    api_key, src = raw("BIGBRAIN_API_KEY")
     if not api_key and use_anthropic:
         for alt in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"):
             api_key, src = raw(alt)
@@ -379,100 +379,100 @@ def load_config(env=None, config_file=None, json_file=None):
                 break
     sources["api_key"] = src
 
-    model, src = raw("DUALMIND_MODEL", DEFAULT_MODEL)
+    model, src = raw("BIGBRAIN_MODEL", DEFAULT_MODEL)
     sources["model"] = src
 
-    max_rounds_raw, _ = raw("DUALMIND_MAX_ROUNDS")
-    max_tokens_raw, _ = raw("DUALMIND_MAX_TOKENS")
-    max_tokens_cap_raw, _ = raw("DUALMIND_MAX_TOKENS_CAP", str(DEFAULT_MAX_TOKENS_CAP))
-    timeout_raw, _ = raw("DUALMIND_TIMEOUT")
-    stream_raw, _ = raw("DUALMIND_STREAM")
-    retries_raw, _ = raw("DUALMIND_RETRIES", str(DEFAULT_RETRIES))
-    backoff_raw, _ = raw("DUALMIND_RETRY_BACKOFF", str(DEFAULT_RETRY_BACKOFF))
-    context_raw, _ = raw("DUALMIND_MAX_CONTEXT_CHARS")
-    threshold_raw, _ = raw("DUALMIND_THRESHOLD")
-    weights_raw, weights_src = raw("DUALMIND_WEIGHTS")
+    max_rounds_raw, _ = raw("BIGBRAIN_MAX_ROUNDS")
+    max_tokens_raw, _ = raw("BIGBRAIN_MAX_TOKENS")
+    max_tokens_cap_raw, _ = raw("BIGBRAIN_MAX_TOKENS_CAP", str(DEFAULT_MAX_TOKENS_CAP))
+    timeout_raw, _ = raw("BIGBRAIN_TIMEOUT")
+    stream_raw, _ = raw("BIGBRAIN_STREAM")
+    retries_raw, _ = raw("BIGBRAIN_RETRIES", str(DEFAULT_RETRIES))
+    backoff_raw, _ = raw("BIGBRAIN_RETRY_BACKOFF", str(DEFAULT_RETRY_BACKOFF))
+    context_raw, _ = raw("BIGBRAIN_MAX_CONTEXT_CHARS")
+    threshold_raw, _ = raw("BIGBRAIN_THRESHOLD")
+    weights_raw, weights_src = raw("BIGBRAIN_WEIGHTS")
 
     cfg = {
         "base_url": (base_url or "").strip().rstrip("/"),
         "api_key": (api_key or "").strip(),
         "model": (model or DEFAULT_MODEL).strip(),
-        "max_rounds": _as_int(max_rounds_raw, "DUALMIND_MAX_ROUNDS", problems, DEFAULT_MAX_ROUNDS),
-        "max_tokens": _as_int(max_tokens_raw, "DUALMIND_MAX_TOKENS", problems, DEFAULT_MAX_TOKENS),
+        "max_rounds": _as_int(max_rounds_raw, "BIGBRAIN_MAX_ROUNDS", problems, DEFAULT_MAX_ROUNDS),
+        "max_tokens": _as_int(max_tokens_raw, "BIGBRAIN_MAX_TOKENS", problems, DEFAULT_MAX_TOKENS),
         "max_tokens_cap": _as_int(
-            max_tokens_cap_raw, "DUALMIND_MAX_TOKENS_CAP", problems, DEFAULT_MAX_TOKENS_CAP
+            max_tokens_cap_raw, "BIGBRAIN_MAX_TOKENS_CAP", problems, DEFAULT_MAX_TOKENS_CAP
         ),
-        "timeout": _as_int(timeout_raw, "DUALMIND_TIMEOUT", problems, DEFAULT_TIMEOUT),
-        "stream": _as_bool(stream_raw, "DUALMIND_STREAM", problems, DEFAULT_STREAM),
+        "timeout": _as_int(timeout_raw, "BIGBRAIN_TIMEOUT", problems, DEFAULT_TIMEOUT),
+        "stream": _as_bool(stream_raw, "BIGBRAIN_STREAM", problems, DEFAULT_STREAM),
         # ``retries`` counts *retries*, not attempts: 0 disables retrying.
         "retries": _as_int(
-            retries_raw, "DUALMIND_RETRIES", problems, DEFAULT_RETRIES, minimum=0
+            retries_raw, "BIGBRAIN_RETRIES", problems, DEFAULT_RETRIES, minimum=0
         ),
         "retry_backoff": _as_float(
-            backoff_raw, "DUALMIND_RETRY_BACKOFF", problems, DEFAULT_RETRY_BACKOFF, low=0.0
+            backoff_raw, "BIGBRAIN_RETRY_BACKOFF", problems, DEFAULT_RETRY_BACKOFF, low=0.0
         ),
         "max_context_chars": _as_int(
-            context_raw, "DUALMIND_MAX_CONTEXT_CHARS", problems, DEFAULT_MAX_CONTEXT_CHARS
+            context_raw, "BIGBRAIN_MAX_CONTEXT_CHARS", problems, DEFAULT_MAX_CONTEXT_CHARS
         ),
         "threshold": _as_float(
-            threshold_raw, "DUALMIND_THRESHOLD", problems, DEFAULT_THRESHOLD, low=0.0, high=1.0
+            threshold_raw, "BIGBRAIN_THRESHOLD", problems, DEFAULT_THRESHOLD, low=0.0, high=1.0
         ),
-        "weights": parse_weights(weights_raw, problems, source="DUALMIND_WEIGHTS"),
+        "weights": parse_weights(weights_raw, problems, source="BIGBRAIN_WEIGHTS"),
         "weights_source": weights_src,
         "use_anthropic_env": use_anthropic,
         "config_file": str(env_path),
         "config_file_present": Path(env_path).is_file(),
         "json_config_file": str(json_path),
         "json_config_present": json_path.is_file(),
-        "dualmind_home": str(dualmind_home_dir(env)),
+        "bigbrain_home": str(bigbrain_home_dir(env)),
         "sources": sources,
         "problems": problems,
     }
 
     # Report pricing (item 3).
-    price_in, _ = raw("DUALMIND_PRICE_IN")
-    price_out, _ = raw("DUALMIND_PRICE_OUT")
-    base_in, _ = raw("DUALMIND_BASELINE_PRICE_IN")
-    base_out, _ = raw("DUALMIND_BASELINE_PRICE_OUT")
-    exec_in, _ = raw("DUALMIND_EXECUTOR_PRICE_IN")
-    exec_out, _ = raw("DUALMIND_EXECUTOR_PRICE_OUT")
+    price_in, _ = raw("BIGBRAIN_PRICE_IN")
+    price_out, _ = raw("BIGBRAIN_PRICE_OUT")
+    base_in, _ = raw("BIGBRAIN_BASELINE_PRICE_IN")
+    base_out, _ = raw("BIGBRAIN_BASELINE_PRICE_OUT")
+    exec_in, _ = raw("BIGBRAIN_EXECUTOR_PRICE_IN")
+    exec_out, _ = raw("BIGBRAIN_EXECUTOR_PRICE_OUT")
     exec_tokens, _ = raw(
-        "DUALMIND_EXECUTOR_TOKENS_PER_ROUND", str(DEFAULT_EXECUTOR_TOKENS_PER_ROUND)
+        "BIGBRAIN_EXECUTOR_TOKENS_PER_ROUND", str(DEFAULT_EXECUTOR_TOKENS_PER_ROUND)
     )
     cfg["prices"] = {
-        "advisor_in": _as_float(price_in, "DUALMIND_PRICE_IN", problems, DEFAULT_PRICE_IN),
-        "advisor_out": _as_float(price_out, "DUALMIND_PRICE_OUT", problems, DEFAULT_PRICE_OUT),
+        "advisor_in": _as_float(price_in, "BIGBRAIN_PRICE_IN", problems, DEFAULT_PRICE_IN),
+        "advisor_out": _as_float(price_out, "BIGBRAIN_PRICE_OUT", problems, DEFAULT_PRICE_OUT),
         "baseline_in": _as_float(
-            base_in, "DUALMIND_BASELINE_PRICE_IN", problems, DEFAULT_BASELINE_PRICE_IN
+            base_in, "BIGBRAIN_BASELINE_PRICE_IN", problems, DEFAULT_BASELINE_PRICE_IN
         ),
         "baseline_out": _as_float(
-            base_out, "DUALMIND_BASELINE_PRICE_OUT", problems, DEFAULT_BASELINE_PRICE_OUT
+            base_out, "BIGBRAIN_BASELINE_PRICE_OUT", problems, DEFAULT_BASELINE_PRICE_OUT
         ),
         # The executor model's own price, used to size the "what it would have
         # cost to send all of this to the premium model" comparison.
         "executor_in": _as_float(
-            exec_in, "DUALMIND_EXECUTOR_PRICE_IN", problems, DEFAULT_EXECUTOR_PRICE_IN
+            exec_in, "BIGBRAIN_EXECUTOR_PRICE_IN", problems, DEFAULT_EXECUTOR_PRICE_IN
         ),
         "executor_out": _as_float(
-            exec_out, "DUALMIND_EXECUTOR_PRICE_OUT", problems, DEFAULT_EXECUTOR_PRICE_OUT
+            exec_out, "BIGBRAIN_EXECUTOR_PRICE_OUT", problems, DEFAULT_EXECUTOR_PRICE_OUT
         ),
     }
     cfg["executor_tokens_per_round"] = _as_int(
         exec_tokens,
-        "DUALMIND_EXECUTOR_TOKENS_PER_ROUND",
+        "BIGBRAIN_EXECUTOR_TOKENS_PER_ROUND",
         problems,
         DEFAULT_EXECUTOR_TOKENS_PER_ROUND,
     )
 
-    lesson_inject, _ = raw("DUALMIND_LESSON_INJECT", str(DEFAULT_LESSON_INJECT))
-    lesson_cap, _ = raw("DUALMIND_LESSON_CAP", str(DEFAULT_LESSON_CAP))
+    lesson_inject, _ = raw("BIGBRAIN_LESSON_INJECT", str(DEFAULT_LESSON_INJECT))
+    lesson_cap, _ = raw("BIGBRAIN_LESSON_CAP", str(DEFAULT_LESSON_CAP))
     cfg["lesson_inject"] = _as_int(
-        lesson_inject, "DUALMIND_LESSON_INJECT", problems, DEFAULT_LESSON_INJECT
+        lesson_inject, "BIGBRAIN_LESSON_INJECT", problems, DEFAULT_LESSON_INJECT
     )
-    cfg["lesson_cap"] = _as_int(lesson_cap, "DUALMIND_LESSON_CAP", problems, DEFAULT_LESSON_CAP)
+    cfg["lesson_cap"] = _as_int(lesson_cap, "BIGBRAIN_LESSON_CAP", problems, DEFAULT_LESSON_CAP)
 
     cfg["mock_path"] = (
-        env.get("DUALMIND_MOCK") or json_vals.get("mock_file") or file_vals.get("DUALMIND_MOCK") or None
+        env.get("BIGBRAIN_MOCK") or json_vals.get("mock_file") or file_vals.get("BIGBRAIN_MOCK") or None
     )
     cfg["problems"].extend(validate_config(cfg))
     return cfg
@@ -484,19 +484,19 @@ def validate_config(cfg):
     base = cfg.get("base_url") or ""
     if not base:
         problems.append(
-            "DUALMIND_BASE_URL is not set (the API base URL, e.g. https://api.example.com)"
+            "BIGBRAIN_BASE_URL is not set (the API base URL, e.g. https://api.example.com)"
         )
     elif not re.match(r"^https?://[^/\s]+", base):
         problems.append(
-            "DUALMIND_BASE_URL must start with http:// or https:// and include a host, got %r" % base
+            "BIGBRAIN_BASE_URL must start with http:// or https:// and include a host, got %r" % base
         )
     if not cfg.get("api_key"):
-        key_hint = "DUALMIND_API_KEY"
+        key_hint = "BIGBRAIN_API_KEY"
         if cfg.get("use_anthropic_env"):
             key_hint += " (or ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY)"
         problems.append("%s is not set (the API key sent as x-api-key and Authorization: Bearer)" % key_hint)
     if not (cfg.get("model") or "").strip():
-        problems.append("DUALMIND_MODEL must not be empty (default: %s)" % DEFAULT_MODEL)
+        problems.append("BIGBRAIN_MODEL must not be empty (default: %s)" % DEFAULT_MODEL)
     return problems
 
 
@@ -512,14 +512,14 @@ def config_problems(cfg):
 def skill_root():
     """Directory containing SKILL.md (the skill root).
 
-    ``scripts/dualmind/config.py`` -> ``scripts/dualmind`` -> ``scripts`` ->
+    ``scripts/bigbrain/config.py`` -> ``scripts/bigbrain`` -> ``scripts`` ->
     the skill root.
     """
     return Path(__file__).resolve().parent.parent.parent
 
 
 def default_system_prompt_path():
-    override = os.environ.get("DUALMIND_SYSTEM_PROMPT_FILE")
+    override = os.environ.get("BIGBRAIN_SYSTEM_PROMPT_FILE")
     if override:
         return Path(override).expanduser()
     return skill_root() / "references" / "advisor-system-prompt.md"
@@ -528,11 +528,11 @@ def default_system_prompt_path():
 def load_system_prompt(path=None):
     path = Path(path) if path else default_system_prompt_path()
     if not path.is_file():
-        raise DualmindError(
-            "advisor system prompt not found at %s (set DUALMIND_SYSTEM_PROMPT_FILE to override)" % path,
+        raise BigbrainError(
+            "advisor system prompt not found at %s (set BIGBRAIN_SYSTEM_PROMPT_FILE to override)" % path,
             EXIT_CONFIG,
         )
     text = path.read_text(encoding="utf-8", errors="replace").strip()
     if not text:
-        raise DualmindError("advisor system prompt at %s is empty" % path, EXIT_CONFIG)
+        raise BigbrainError("advisor system prompt at %s is empty" % path, EXIT_CONFIG)
     return text

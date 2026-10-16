@@ -1,4 +1,4 @@
-"""The dualmind command line.
+"""The bigbrain command line.
 
 One entry point, several verbs.  The verbs split into three groups:
 
@@ -7,7 +7,7 @@ One entry point, several verbs.  The verbs split into three groups:
 *learn*    ``lessons`` -- the user-level experience store (item 4)
 
 Exit codes are the control signal for the loop, and they are documented in
-``--help`` and in SKILL.md.  Every verb prints ``[DualMind] ...`` progress lines
+``--help`` and in SKILL.md.  Every verb prints ``[Bigbrain] ...`` progress lines
 to stderr so a human can follow along without reading the session JSON (item 6).
 """
 
@@ -31,7 +31,7 @@ from .config import (
     EXIT_CONFIG,
     EXIT_MAX_ROUNDS,
     EXIT_OK,
-    DualmindError,
+    BigbrainError,
     config_problems,
     load_config,
     mask_secret,
@@ -44,10 +44,10 @@ from .session import (
     resolve_session_dir,
 )
 
-PROG = "dualmind"
+PROG = "bigbrain"
 
 DESCRIPTION = """\
-Dualmind: escalate complex coding work to an Opus advisor that plans, reviews
+Bigbrain: escalate complex coding work to an Opus advisor that plans, reviews
 and keeps pushing until the acceptance criteria are actually met.
 
 Exit codes (read these first):
@@ -102,7 +102,7 @@ def banner(progress, cfg, task=""):
 
 def cmd_score(args, cfg, progress):
     if args.files_changed is not None and args.files_estimated is not None:
-        raise DualmindError(
+        raise BigbrainError(
             "pass either --files-changed or --files-estimated, not both", EXIT_CONFIG
         )
     files = args.files_changed if args.files_changed is not None else args.files_estimated
@@ -115,7 +115,7 @@ def cmd_score(args, cfg, progress):
         for problem in problems:
             eprint("%s: %s" % (PROG, problem))
         if problems:
-            raise DualmindError("--weights could not be parsed", EXIT_CONFIG)
+            raise BigbrainError("--weights could not be parsed", EXIT_CONFIG)
 
     result = scoring.score_task(
         files=files,
@@ -132,7 +132,7 @@ def cmd_score(args, cfg, progress):
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return EXIT_OK
 
-    # The stderr progress line above is the [DualMind] banner.  Stdout carries
+    # The stderr progress line above is the [Bigbrain] banner.  Stdout carries
     # the result itself, in a different shape, so a plain `score` never prints
     # the same sentence twice.
     if args.explain:
@@ -164,8 +164,8 @@ def cmd_status(args, cfg, progress):
 
     if args.all:
         root = args.root or os.getcwd()
-        text = status_mod.render_all(Path(root) / ".dualmind")
-        print(text or "no sessions under %s" % (Path(root) / ".dualmind"))
+        text = status_mod.render_all(Path(root) / ".bigbrain")
+        print(text or "no sessions under %s" % (Path(root) / ".bigbrain"))
         return EXIT_OK
 
     session_dir = require_session_dir(args.session)
@@ -220,7 +220,7 @@ def cmd_lessons(args, cfg, progress):
         if args.from_file:
             text = Path(args.from_file).read_text(encoding="utf-8", errors="replace")
         if not text or not text.strip():
-            raise DualmindError("lessons add requires TEXT or --from-file FILE", EXIT_CONFIG)
+            raise BigbrainError("lessons add requires TEXT or --from-file FILE", EXIT_CONFIG)
         lesson = experience.make_lesson(
             text, kind=args.kind, scope=args.scope, confidence=args.confidence,
             session=args.session,
@@ -264,7 +264,7 @@ def cmd_lessons(args, cfg, progress):
             print(text)
         return EXIT_OK
 
-    raise DualmindError("unknown lessons subcommand %r" % action, EXIT_CONFIG)  # pragma: no cover
+    raise BigbrainError("unknown lessons subcommand %r" % action, EXIT_CONFIG)  # pragma: no cover
 
 
 def _mock_entries(cfg, args):
@@ -284,7 +284,7 @@ def _inject_lessons(transcript, cfg, progress):
     try:
         store = experience.resolve_store()
         lessons = experience.select_lessons(experience.load_lessons(store), limit=cfg["lesson_inject"])
-    except DualmindError as exc:
+    except BigbrainError as exc:
         eprint("%s: lessons not loaded: %s" % (PROG, exc))
         lessons = []
     except OSError as exc:  # pragma: no cover - defensive
@@ -303,7 +303,7 @@ def _save_reply_lessons(transcript, normalised, cfg, progress):
         return 0
     try:
         store = experience.resolve_store(create=True)
-    except DualmindError as exc:
+    except BigbrainError as exc:
         eprint("%s: lessons not saved: %s" % (PROG, exc))
         return 0
     records = [
@@ -406,7 +406,7 @@ def _score_and_report(args, cfg, progress):
             "does not need the advisor. Do it locally, or pass --force to escalate anyway."
             % (PROG, result["score"], result["threshold"])
         )
-        raise DualmindError(
+        raise BigbrainError(
             "escalation score below threshold", EXIT_CONFIG, score=result["score"]
         )
     return result
@@ -414,7 +414,7 @@ def _score_and_report(args, cfg, progress):
 
 def cmd_start(args, cfg, progress):
     if not args.task or not args.task.strip():
-        raise DualmindError("start requires --task TEXT", EXIT_CONFIG)
+        raise BigbrainError("start requires --task TEXT", EXIT_CONFIG)
 
     # A dry run must leave no trace: it prints the payload and writes nothing,
     # including the session directory itself.  Checked before it is created.
@@ -424,7 +424,7 @@ def cmd_start(args, cfg, progress):
         session_dir = resolve_session_dir(args.session, create=False)
     transcript_path = session_dir / "transcript.json"
     if transcript_path.is_file() and not args.force:
-        raise DualmindError(
+        raise BigbrainError(
             "session %s already exists; pass a new --session DIR or --force to reuse it" % session_dir,
             EXIT_CONFIG,
         )
@@ -488,13 +488,13 @@ def cmd_report(args, cfg, progress):
     session_dir = require_session_dir(args.session)
     transcript = session.load_transcript(session_dir)
     if transcript.get("status") in (STATE_DONE, "blocked", "max-rounds") and not args.force:
-        raise DualmindError(
+        raise BigbrainError(
             "session %s already finished with status=%s; pass --force to add another round"
             % (session_dir, transcript.get("status")),
             EXIT_CONFIG,
         )
     if not args.result_file:
-        raise DualmindError("report requires --result-file FILE", EXIT_CONFIG)
+        raise BigbrainError("report requires --result-file FILE", EXIT_CONFIG)
 
     result_text = Path(args.result_file).read_text(encoding="utf-8", errors="replace")
     session.record_executor_work(
@@ -591,7 +591,7 @@ def cmd_stuck(args, cfg, progress):
     if args.reason:
         details = (details + "\n\n" + args.reason).strip()
     if not details.strip():
-        raise DualmindError(
+        raise BigbrainError(
             "stuck requires --reason TEXT or --failure-file FILE describing what failed",
             EXIT_CONFIG,
         )
@@ -686,12 +686,12 @@ def cmd_finish(args, cfg, progress):
 
 def _add_loop_common(parser, task_side=False):
     parser.add_argument("--session", default=None if task_side else None,
-                        help="session directory (default .dualmind/session-<timestamp>)")
+                        help="session directory (default .bigbrain/session-<timestamp>)")
     parser.add_argument("--mock", metavar="SCRIPTED_FILE", default=None,
-                        help="replay scripted advisor replies from a JSON list (also DUALMIND_MOCK)")
+                        help="replay scripted advisor replies from a JSON list (also BIGBRAIN_MOCK)")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the request payload without sending it or writing the session")
-    parser.add_argument("--quiet", action="store_true", help="suppress the [DualMind] progress lines")
+    parser.add_argument("--quiet", action="store_true", help="suppress the [Bigbrain] progress lines")
     parser.add_argument("--no-retrospective", action="store_true",
                         help="skip the automatic end-of-run retrospective call")
 
@@ -713,18 +713,18 @@ def _add_scoring(parser):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        prog="dualmind_cli.py",
+        prog="bigbrain_cli.py",
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--quiet", action="store_true", help="suppress the [DualMind] progress lines")
+    parser.add_argument("--quiet", action="store_true", help="suppress the [Bigbrain] progress lines")
     # Global forms of the loop flags: `advisor.py --dry-run start ...` must keep
     # working, so these are accepted before the subcommand as well as after it.
     # Subparser values win when both are given.
     parser.add_argument("--dry-run", action="store_true", dest="_global_dry_run",
                         help="print the request payload without sending it or writing the session")
     parser.add_argument("--mock", metavar="SCRIPTED_FILE", default=None, dest="_global_mock",
-                        help="replay scripted advisor replies from a JSON list (also DUALMIND_MOCK)")
+                        help="replay scripted advisor replies from a JSON list (also BIGBRAIN_MOCK)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # -- score ---------------------------------------------------------
@@ -737,11 +737,11 @@ def build_parser():
                        help="high-risk tag, repeatable or comma-separated")
     score.add_argument("--user-request", action="store_true", help="the user asked for the advisor")
     score.add_argument("--threshold", type=float, default=None,
-                       help="override the decision threshold (default 0.6 / DUALMIND_THRESHOLD)")
+                       help="override the decision threshold (default 0.6 / BIGBRAIN_THRESHOLD)")
     score.add_argument("--weights", default=None, help="JSON object overriding the weights")
     score.add_argument("--explain", action="store_true", help="print the per-signal breakdown")
     score.add_argument("--json", action="store_true", help="machine-readable output")
-    score.add_argument("--quiet", action="store_true", help="suppress the [DualMind] progress lines")
+    score.add_argument("--quiet", action="store_true", help="suppress the [Bigbrain] progress lines")
 
     # -- start ---------------------------------------------------------
     start = sub.add_parser("start", help="open a session: ask for the plan and the milestones")
@@ -750,7 +750,7 @@ def build_parser():
     start.add_argument("--session", default=None, help="session directory")
     start.add_argument("--force", action="store_true", help="escalate even below the threshold, or reuse a session")
     _add_scoring(start)
-    start.add_argument("--mock", default=None, help="scripted replies JSON list (also DUALMIND_MOCK)")
+    start.add_argument("--mock", default=None, help="scripted replies JSON list (also BIGBRAIN_MOCK)")
     start.add_argument("--dry-run", action="store_true", help="print the payload, write nothing")
     start.add_argument("--quiet", action="store_true")
     start.add_argument("--no-retrospective", action="store_true")
@@ -882,13 +882,13 @@ def main(argv=None):
     if args.command == "score":
         # score is a local calculation, so a missing endpoint is not a problem
         # for it -- but every *other* configuration problem still is. A
-        # malformed DUALMIND_WEIGHTS must fail loudly here rather than quietly
+        # malformed BIGBRAIN_WEIGHTS must fail loudly here rather than quietly
         # scoring with the defaults.
         cfg = load_config()
         blocking = [
             problem
             for problem in config_problems(cfg)
-            if "DUALMIND_BASE_URL" not in problem and "API_KEY" not in problem
+            if "BIGBRAIN_BASE_URL" not in problem and "API_KEY" not in problem
         ]
         if blocking:
             for problem in blocking:
@@ -909,7 +909,7 @@ def main(argv=None):
 
     handler = HANDLERS.get(args.command)
     if handler is None:  # pragma: no cover - argparse already rejects these
-        raise DualmindError("unknown command %r" % args.command, EXIT_CONFIG)
+        raise BigbrainError("unknown command %r" % args.command, EXIT_CONFIG)
     return handler(args, cfg, progress)
 
 
@@ -917,7 +917,7 @@ def run(argv=None):
     """``main`` with the shared exception mapping; returns the exit code."""
     try:
         return main(argv)
-    except DualmindError as exc:
+    except BigbrainError as exc:
         eprint("%s: %s" % (PROG, exc))
         for key, value in exc.extra.items():
             eprint("%s:   %s: %s" % (PROG, key, value))

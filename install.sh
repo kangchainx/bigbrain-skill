@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Install the dualmind skill into an agent skills directory.
+# Install the bigbrain skill into an agent skills directory.
 #
 # From a checkout:
-#   ./install.sh                 -> ${CODEX_HOME:-$HOME/.codex}/skills/dualmind
-#                                  plus a symlink in $HOME/.agents/skills/dualmind
-#   ./install.sh --claude        -> also install into ~/.claude/skills/dualmind
+#   ./install.sh                 -> ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain
+#                                  plus a symlink in $HOME/.agents/skills/bigbrain
+#   ./install.sh --claude        -> also install into ~/.claude/skills/bigbrain
 #   ./install.sh --copy          -> copy instead of symlink
 #   ./install.sh --uninstall     -> remove the skill (keeps the experience store)
-#   ./install.sh --uninstall --purge  -> also remove ~/.dualmind experience data
+#   ./install.sh --uninstall --purge  -> also remove ~/.bigbrain experience data
 #   ./install.sh --dir PATH      -> any custom destination
 #
 # With no checkout (the curl|bash one-liner):
-#   curl -fsSL <url>/install.sh | bash
-#   DUALMIND_SRC=https://host/dualmind.tar.gz curl -fsSL <url>/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/install.sh \
+#     | BIGBRAIN_SRC=https://github.com/kangchainx/bigbrain-skill/archive/refs/heads/main.tar.gz bash
 #
 # The installer never touches an AGENTS.md, and never writes to any agent
 # instruction or configuration file.  It places the skill, and nothing else.
@@ -77,16 +77,16 @@ targets() {
 if [ "$UNINSTALL" -eq 1 ]; then
   removed=0
   for dir in "$PRIMARY_DIR" "$AGENTS_DIR" "$CLAUDE_DIR"; do
-    target="$dir/dualmind"
+    target="$dir/bigbrain"
     if [ -e "$target" ] || [ -L "$target" ]; then
       rm -rf "$target"
       echo "install.sh: removed $target"
       removed=$((removed + 1))
     fi
   done
-  if [ -n "$DEST" ] && [ -e "$DEST/dualmind" ]; then
-    rm -rf "$DEST/dualmind"
-    echo "install.sh: removed $DEST/dualmind"
+  if [ -n "$DEST" ] && [ -e "$DEST/bigbrain" ]; then
+    rm -rf "$DEST/bigbrain"
+    echo "install.sh: removed $DEST/bigbrain"
     removed=$((removed + 1))
   fi
   [ "$removed" -eq 0 ] && echo "install.sh: nothing to remove"
@@ -94,13 +94,13 @@ if [ "$UNINSTALL" -eq 1 ]; then
   # The experience store is the user's own accumulated lessons, so it survives
   # an uninstall unless --purge is explicit.  It is never inside the repo.
   if [ "$PURGE" -eq 1 ]; then
-    store="${DUALMIND_HOME:-$HOME/.dualmind}"
+    store="${BIGBRAIN_HOME:-$HOME/.bigbrain}"
     if [ -e "$store" ]; then
       rm -rf "$store"
       echo "install.sh: purged experience store $store"
     fi
   else
-    store="${DUALMIND_HOME:-$HOME/.dualmind}"
+    store="${BIGBRAIN_HOME:-$HOME/.bigbrain}"
     [ -e "$store" ] && echo "install.sh: kept experience store $store (use --purge to remove)"
   fi
   exit 0
@@ -123,25 +123,25 @@ if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/SKILL.md" ]; then
   SOURCE="$SCRIPT_DIR"
 else
   # curl | bash: there is no checkout on disk, so fetch one.
-  URL="${DUALMIND_SRC:-}"
+  URL="${BIGBRAIN_SRC:-}"
   if [ -z "$URL" ]; then
-    echo "install.sh: no local SKILL.md and DUALMIND_SRC is not set." >&2
-    echo "install.sh: set DUALMIND_SRC to a tarball URL, or run this from the skill directory." >&2
+    echo "install.sh: no local SKILL.md and BIGBRAIN_SRC is not set." >&2
+    echo "install.sh: set BIGBRAIN_SRC to a tarball URL, or run this from the skill directory." >&2
     exit 1
   fi
   command -v tar >/dev/null 2>&1 || { echo "install.sh: tar is required" >&2; exit 1; }
-  TMPDIR_DL="$(mktemp -d "${TMPDIR:-/tmp}/dualmind-install.XXXXXX")"
+  TMPDIR_DL="$(mktemp -d "${TMPDIR:-/tmp}/bigbrain-install.XXXXXX")"
   echo "install.sh: fetching $URL"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$URL" -o "$TMPDIR_DL/dualmind.tar.gz"
+    curl -fsSL "$URL" -o "$TMPDIR_DL/bigbrain.tar.gz"
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$TMPDIR_DL/dualmind.tar.gz" "$URL"
+    wget -qO "$TMPDIR_DL/bigbrain.tar.gz" "$URL"
   else
     echo "install.sh: neither curl nor wget is available" >&2
     exit 1
   fi
   mkdir -p "$TMPDIR_DL/src"
-  tar -xzf "$TMPDIR_DL/dualmind.tar.gz" -C "$TMPDIR_DL/src"
+  tar -xzf "$TMPDIR_DL/bigbrain.tar.gz" -C "$TMPDIR_DL/src"
   # The archive may or may not have a top-level directory.
   if [ -f "$TMPDIR_DL/src/SKILL.md" ]; then
     SOURCE="$TMPDIR_DL/src"
@@ -166,7 +166,7 @@ fi
 
 install_into() {
   dest_root="$1"
-  target="$dest_root/dualmind"
+  target="$dest_root/bigbrain"
   mkdir -p "$dest_root"
 
   if [ -L "$target" ] && [ "$(readlink "$target" 2>/dev/null || true)" = "$SOURCE" ]; then
@@ -180,11 +180,11 @@ install_into() {
   if [ "$MODE" = "copy" ]; then
     mkdir -p "$target"
     # Everything except tests, session state and the user-level store.  The
-    # exclusions are deliberate: tests are for the checkout, .dualmind holds
+    # exclusions are deliberate: tests are for the checkout, .bigbrain holds
     # this workspace's session transcripts, and experience/ is the user's own.
     ( cd "$SOURCE" && tar -cf - \
         --exclude='./tests' \
-        --exclude='./.dualmind' \
+        --exclude='./.bigbrain' \
         --exclude='./experience' \
         --exclude='./.git' \
         --exclude='./__pycache__' \
@@ -211,7 +211,7 @@ fi
 
 echo
 echo "Installed. Next:"
-echo "  1. export DUALMIND_BASE_URL=... DUALMIND_API_KEY=..."
-echo "  2. python3 $PRIMARY_DIR/dualmind/scripts/check_config.py   # must print OK before use"
+echo "  1. export BIGBRAIN_BASE_URL=... BIGBRAIN_API_KEY=..."
+echo "  2. python3 $PRIMARY_DIR/bigbrain/scripts/check_config.py   # must print OK before use"
 echo
 echo "Nothing was written to AGENTS.md or to any agent configuration file."

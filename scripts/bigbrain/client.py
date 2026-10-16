@@ -15,15 +15,15 @@ Proxy Read Timeout window") on a long non-streamed turn that would have
 succeeded instantly as a stream, because a stream keeps emitting ``ping`` and
 delta events the whole time.
 
-``DUALMIND_STREAM=0`` turns streaming off for endpoints that do not support it.
+``BIGBRAIN_STREAM=0`` turns streaming off for endpoints that do not support it.
 
 Two timeouts are in play and they do different jobs:
 
-* ``DUALMIND_TIMEOUT`` is the *per-read* socket timeout -- how long a single
+* ``BIGBRAIN_TIMEOUT`` is the *per-read* socket timeout -- how long a single
   read may block waiting for the next chunk.  It must be generous enough for a
   model that thinks for minutes before its first token, which is why it
   defaults to 300s rather than a conventional 30s.
-* ``DUALMIND_MAX_TOTAL_TIMEOUT`` caps one call end to end, so a stream that
+* ``BIGBRAIN_MAX_TOTAL_TIMEOUT`` caps one call end to end, so a stream that
   trickles forever still eventually fails instead of hanging the run.
 """
 
@@ -51,14 +51,14 @@ from .config import (
     EXIT_MODEL,
     EXIT_NETWORK,
     TRANSIENT_HTTP_STATUSES,
-    DualmindError,
+    BigbrainError,
     mask_secret,
 )
 from .io import eprint
 
 #: Written on its own line, and only from here, so the retry trail is greppable
 #: without matching ordinary progress output.
-PROGRESS_PREFIX = "[DualMind]"
+PROGRESS_PREFIX = "[Bigbrain]"
 
 #: SSE error types that mean "the request never had a chance" and are worth
 #: repeating.  ``overloaded_error`` is the usual one under load.
@@ -86,7 +86,7 @@ def _short_body(text, limit=400):
     return text
 
 
-class TransientError(DualmindError):
+class TransientError(BigbrainError):
     """A failure worth retrying, carrying the label used in the retry line.
 
     ``label`` is a bare HTTP status (``"524"``) or a short cause
@@ -179,7 +179,7 @@ def usage_of(json_body):
 def extract_text(json_body):
     """Pull the assistant text out of an Anthropic Messages response body."""
     if not isinstance(json_body, dict):
-        raise DualmindError("response body was not a JSON object", EXIT_HTTP)
+        raise BigbrainError("response body was not a JSON object", EXIT_HTTP)
     content = json_body.get("content")
     if isinstance(content, list):
         parts = []
@@ -196,12 +196,12 @@ def extract_text(json_body):
         return json_body["completion"]
     if isinstance(json_body.get("error"), dict):
         err = json_body["error"]
-        raise DualmindError(
+        raise BigbrainError(
             "API returned an error payload: %s: %s"
             % (err.get("type", "error"), _short_body(str(err.get("message", "")))),
             EXIT_HTTP,
         )
-    raise DualmindError(
+    raise BigbrainError(
         "response contained no text content (keys: %s)" % ", ".join(sorted(json_body))[:200],
         EXIT_HTTP,
     )
@@ -216,10 +216,10 @@ def models_url(cfg):
 
 
 def prompt_cache_enabled(cfg):
-    """True unless ``DUALMIND_PROMPT_CACHE`` (or cfg ``prompt_cache``) is off."""
+    """True unless ``BIGBRAIN_PROMPT_CACHE`` (or cfg ``prompt_cache``) is off."""
     value = cfg.get("prompt_cache")
     if value is None:
-        value = os.environ.get("DUALMIND_PROMPT_CACHE", "1")
+        value = os.environ.get("BIGBRAIN_PROMPT_CACHE", "1")
     return str(value).strip().lower() not in ("0", "false", "no", "off", "")
 
 
@@ -245,7 +245,7 @@ def build_payload(cfg, system_prompt, messages, model=None, max_tokens=None):
     """Build the request body for one advisor round.
 
     ``stream`` is included so the artefact written to the session says exactly
-    what went on the wire; ``DUALMIND_STREAM=0`` omits it entirely rather than
+    what went on the wire; ``BIGBRAIN_STREAM=0`` omits it entirely rather than
     sending ``false``, because some relays reject an unknown field.
     """
     payload = {
@@ -271,7 +271,7 @@ def _headers(cfg):
         "anthropic-version": ANTHROPIC_VERSION,
         "x-api-key": cfg.get("api_key") or "",
         "authorization": "Bearer %s" % (cfg.get("api_key") or ""),
-        "user-agent": "dualmind/1.0 (+stdlib)",
+        "user-agent": "bigbrain/1.0 (+stdlib)",
     }
 
 
@@ -484,7 +484,7 @@ def _plain_from_stream_response(response, status, payload, started):
     try:
         parsed = json.loads(text)
     except ValueError:
-        raise DualmindError(
+        raise BigbrainError(
             "the endpoint returned %s instead of an event stream: %s"
             % (
                 (response.headers.get("content-type") or "an unknown content type"),
@@ -493,13 +493,13 @@ def _plain_from_stream_response(response, status, payload, started):
             EXIT_HTTP,
         )
     if not isinstance(parsed, dict):
-        raise DualmindError(
+        raise BigbrainError(
             "the endpoint returned %s instead of a Messages object" % type(parsed).__name__,
             EXIT_HTTP,
         )
     if isinstance(parsed.get("error"), dict):
         err = parsed["error"]
-        raise DualmindError(
+        raise BigbrainError(
             "API returned an error payload: %s: %s"
             % (err.get("type", "error"), _short_body(str(err.get("message", "")))),
             EXIT_HTTP,
@@ -549,7 +549,7 @@ def _post_stream(cfg, payload, target, per_read, total_timeout):
                             err_type,
                             exit_code,
                         )
-                    raise DualmindError(
+                    raise BigbrainError(
                         "the endpoint reported a mid-stream error: %s: %s" % (err_type, err_msg),
                         exit_code,
                     )
@@ -610,7 +610,7 @@ def _stream_error(data):
 
 
 def _post_plain(cfg, payload, target, per_read, total_timeout):
-    """Non-streaming POST (``DUALMIND_STREAM=0``).  Raises TransientError when retryable."""
+    """Non-streaming POST (``BIGBRAIN_STREAM=0``).  Raises TransientError when retryable."""
     body = json.dumps(payload).encode("utf-8")
     headers = dict(_headers(cfg))
     headers["accept"] = "application/json"
@@ -648,15 +648,15 @@ def _post_plain(cfg, payload, target, per_read, total_timeout):
 def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
     """POST to {base}/v1/messages and return an HttpResponse.
 
-    Streams by default and retries transient failures up to ``DUALMIND_RETRIES``
-    times, printing a ``[DualMind] transient error ..., retry n/N`` line per
-    attempt.  Raises DualmindError with a mapped exit code when the call cannot
+    Streams by default and retries transient failures up to ``BIGBRAIN_RETRIES``
+    times, printing a ``[Bigbrain] transient error ..., retry n/N`` line per
+    attempt.  Raises BigbrainError with a mapped exit code when the call cannot
     be completed.
     """
     base = cfg.get("base_url") or ""
     target = url or (base.rstrip("/") + "/v1/messages")
     if not base and not url:
-        raise DualmindError("DUALMIND_BASE_URL is not set", EXIT_CONFIG)
+        raise BigbrainError("BIGBRAIN_BASE_URL is not set", EXIT_CONFIG)
 
     stream = bool(payload.get("stream", cfg.get("stream", DEFAULT_STREAM)))
     # Normalise the body to match the transport actually being used.  A caller
@@ -679,7 +679,7 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
             return send(cfg, payload, target, per_read, total)
         except TransientError as exc:
             if attempt > retries:
-                raise DualmindError(str(exc), exc.exit_code, **exc.extra)
+                raise BigbrainError(str(exc), exc.exit_code, **exc.extra)
             eprint(
                 "%s transient error %s, retry %d/%d"
                 % (PROGRESS_PREFIX, exc.label, attempt, retries)
@@ -697,7 +697,7 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
             detail = "%s: HTTP %d from %s -- %s" % (label, status, target, _short_body(text))
             if status in TRANSIENT_HTTP_STATUSES:
                 if attempt > retries:
-                    raise DualmindError(detail, code, http_status=status, body=text)
+                    raise BigbrainError(detail, code, http_status=status, body=text)
                 eprint(
                     "%s transient error %d, retry %d/%d"
                     % (PROGRESS_PREFIX, status, attempt, retries)
@@ -705,18 +705,18 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
                 if backoff:
                     time.sleep(backoff * attempt)
                 continue
-            raise DualmindError(detail, code, http_status=status, body=text)
+            raise BigbrainError(detail, code, http_status=status, body=text)
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", exc)
             if isinstance(reason, (socket.timeout, TimeoutError)):
-                raise DualmindError(
+                raise BigbrainError(
                     "network timeout after %ss calling %s" % (per_read, target), EXIT_NETWORK
                 )
             # A reset connection surfaces as ConnectionResetError on Linux and
             # macOS alike; a relay hanging up mid-response lands here too.
             if isinstance(reason, (ConnectionResetError, BrokenPipeError)):
                 if attempt > retries:
-                    raise DualmindError(
+                    raise BigbrainError(
                         "network error calling %s: %s" % (target, reason), EXIT_NETWORK
                     )
                 eprint(
@@ -726,13 +726,13 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
                 if backoff:
                     time.sleep(backoff * attempt)
                 continue
-            raise DualmindError(
+            raise BigbrainError(
                 "network error calling %s: %s (DNS failure, connection refused, or proxy problem)"
                 % (target, reason),
                 EXIT_NETWORK,
             )
         except OSError as exc:
-            raise DualmindError("network error calling %s: %s" % (target, exc), EXIT_NETWORK)
+            raise BigbrainError("network error calling %s: %s" % (target, exc), EXIT_NETWORK)
 
 
 # --------------------------------------------------------------------------
@@ -749,7 +749,7 @@ def list_models(cfg, timeout=None):
     """
     base = cfg.get("base_url") or ""
     if not base:
-        raise DualmindError("DUALMIND_BASE_URL is not set", EXIT_CONFIG)
+        raise BigbrainError("BIGBRAIN_BASE_URL is not set", EXIT_CONFIG)
     target = models_url(cfg)
     headers = dict(_headers(cfg))
     headers["accept"] = "application/json"
@@ -761,7 +761,7 @@ def list_models(cfg, timeout=None):
             try:
                 return json.loads(text)
             except ValueError:
-                raise DualmindError(
+                raise BigbrainError(
                     "GET %s did not return JSON: %s" % (target, _short_body(text)), EXIT_HTTP
                 )
     except urllib.error.HTTPError as exc:
@@ -771,20 +771,20 @@ def list_models(cfg, timeout=None):
         except Exception:  # pragma: no cover - defensive
             pass
         code, label = _classify_http_status(exc.code)
-        raise DualmindError(
+        raise BigbrainError(
             "%s: HTTP %d from GET %s -- %s" % (label, exc.code, target, _short_body(text)),
             code,
             http_status=exc.code,
             body=text,
         )
     except (socket.timeout, TimeoutError):
-        raise DualmindError("network timeout after %ss calling %s" % (per_read, target), EXIT_NETWORK)
+        raise BigbrainError("network timeout after %ss calling %s" % (per_read, target), EXIT_NETWORK)
     except urllib.error.URLError as exc:
-        raise DualmindError(
+        raise BigbrainError(
             "network error calling %s: %s" % (target, getattr(exc, "reason", exc)), EXIT_NETWORK
         )
     except OSError as exc:
-        raise DualmindError("network error calling %s: %s" % (target, exc), EXIT_NETWORK)
+        raise BigbrainError("network error calling %s: %s" % (target, exc), EXIT_NETWORK)
 
 
 def model_ids(body):

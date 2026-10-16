@@ -23,8 +23,8 @@ The scripted scenario is the full milestone flow:
 ## 0. Configure and verify
 
 ```bash
-export DUALMIND_BASE_URL=https://api.example.com
-export DUALMIND_API_KEY=sk-...
+export BIGBRAIN_BASE_URL=https://api.example.com
+export BIGBRAIN_API_KEY=sk-...
 
 python3 scripts/check_config.py
 # OK
@@ -39,11 +39,11 @@ If this does not exit 0, stop here. The checker names the variable at fault.
 
 ## 1. Load your lessons
 
-Always the first step on a DualMind trigger:
+Always the first step on a Bigbrain trigger:
 
 ```bash
-python3 scripts/dualmind_cli.py lessons list --limit 10
-# store: /home/you/.dualmind/experience
+python3 scripts/bigbrain_cli.py lessons list --limit 10
+# store: /home/you/.bigbrain/experience
 # total: 7  shown: 7
 #   [workflow   0.87] Require verification commands to be quoted with their verbatim output.
 ```
@@ -53,28 +53,28 @@ Nothing here on a first run — that is fine; lessons accumulate as you use the 
 ## 2. Score the task
 
 ```bash
-python3 scripts/dualmind_cli.py score --files-estimated 4 --ambiguity 0.4 --high-risk infra
-# [DualMind] evaluating escalation score 0.52 <= 0.60 -> stay_local
+python3 scripts/bigbrain_cli.py score --files-estimated 4 --ambiguity 0.4 --high-risk infra
+# [Bigbrain] evaluating escalation score 0.52 <= 0.60 -> stay_local
 ```
 
 Below threshold. Add a high-risk tag that actually applies, or raise the ambiguity estimate —
 do not tune the inputs to reach the answer you want:
 
 ```bash
-python3 scripts/dualmind_cli.py score --files-estimated 5 --ambiguity 0.7 --high-risk migration
-# [DualMind] evaluating escalation score 0.72 > 0.60 -> escalate
+python3 scripts/bigbrain_cli.py score --files-estimated 5 --ambiguity 0.7 --high-risk migration
+# [Bigbrain] evaluating escalation score 0.72 > 0.60 -> escalate
 ```
 
 ## 3. Round 1 — escalate and get the milestones
 
 ```bash
-python3 scripts/dualmind_cli.py start \
+python3 scripts/bigbrain_cli.py start \
   --task "Add a TTL cache layer to cache.py with tests.
           Acceptance: entries expire after their TTL; the cache is bounded by maxsize and the
           evicted key is asserted; the full test suite stays green.
           Escalation score 0.72." \
   --context-file cache.py --context-file tests/test_cache.py \
-  --session .dualmind/session-cache
+  --session .bigbrain/session-cache
 ```
 
 The advisor replies with one JSON object (real shape, abridged):
@@ -121,10 +121,10 @@ OK
 ```
 
 ```bash
-python3 scripts/dualmind_cli.py report --session .dualmind/session-cache --result-file r-m1.md
-# [DualMind] milestone 1/3 sent for review (m1)
-# [DualMind] round 2/8
-# [DualMind] verdict: approve for milestone m1
+python3 scripts/bigbrain_cli.py report --session .bigbrain/session-cache --result-file r-m1.md
+# [Bigbrain] milestone 1/3 sent for review (m1)
+# [Bigbrain] round 2/8
+# [Bigbrain] verdict: approve for milestone m1
 ```
 
 ## 5. A revise on m2
@@ -149,8 +149,8 @@ Round 3 comes back `revise`, and the issues are specific:
 Fix exactly what it named — the assertion, not the implementation — and report again:
 
 ```bash
-python3 scripts/dualmind_cli.py report --session .dualmind/session-cache --result-file r-m2b.md
-# [DualMind] verdict: approve for milestone m2
+python3 scripts/bigbrain_cli.py report --session .bigbrain/session-cache --result-file r-m2b.md
+# [Bigbrain] verdict: approve for milestone m2
 ```
 
 ## 6. Finish
@@ -158,13 +158,13 @@ python3 scripts/dualmind_cli.py report --session .dualmind/session-cache --resul
 Round 5 returns `status=done` with all three criteria marked met, so the loop ends:
 
 ```bash
-python3 scripts/dualmind_cli.py report --session .dualmind/session-cache --result-file r-m3.md
-# [DualMind] milestone 3/3 sent for review (m3)
-# [DualMind] verdict: approve for milestone m3
+python3 scripts/bigbrain_cli.py report --session .bigbrain/session-cache --result-file r-m3.md
+# [Bigbrain] milestone 3/3 sent for review (m3)
+# [Bigbrain] verdict: approve for milestone m3
 # DONE
-# [DualMind] retrospective (done): requesting a process review
-# [DualMind] lessons saved: 3
-# [DualMind] report written: .dualmind/session-cache/report.md
+# [Bigbrain] retrospective (done): requesting a process review
+# [Bigbrain] lessons saved: 3
+# [Bigbrain] report written: .bigbrain/session-cache/report.md
 ```
 
 **`DONE` requires both halves**: `status=done` *and* every acceptance criterion marked met in
@@ -195,7 +195,7 @@ The retrospective summary prints to stdout, the lessons are merged into your sto
 When a milestone will not come together, hand over the failure rather than retrying:
 
 ```bash
-python3 scripts/dualmind_cli.py stuck --session .dualmind/session-cache \
+python3 scripts/bigbrain_cli.py stuck --session .bigbrain/session-cache \
   --reason "eviction test passes but the key order is wrong" \
   --failure-file failing-output.txt --attempts 2
 ```
@@ -208,14 +208,14 @@ and give a different approach, narrow the milestone, or declare a real blocker.
 ```bash
 # against the built-in scripted scenario
 python3 scripts/mock_server.py --script milestones --port 0 --port-file /tmp/port
-export DUALMIND_BASE_URL="http://127.0.0.1:$(cat /tmp/port)"
-export DUALMIND_API_KEY=test-key
+export BIGBRAIN_BASE_URL="http://127.0.0.1:$(cat /tmp/port)"
+export BIGBRAIN_API_KEY=test-key
 
 # or with no server at all
-export DUALMIND_MOCK=examples/minimal/mock_rounds.json
+export BIGBRAIN_MOCK=examples/minimal/mock_rounds.json
 
 # or without sending anything
-python3 scripts/dualmind_cli.py --dry-run start --task "..." --session /tmp/s
+python3 scripts/bigbrain_cli.py --dry-run start --task "..." --session /tmp/s
 ```
 
 Both are for testing only. Never present a mock run as a real advisor review.

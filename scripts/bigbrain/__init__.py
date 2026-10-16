@@ -1,4 +1,4 @@
-"""dualmind -- escalate complex coding work to an Opus advisor.
+"""bigbrain -- escalate complex coding work to an Opus advisor.
 
 Python 3 standard library only.  Nothing here phones home, pushes, publishes or
 fetches anything beyond the advisor API the user configured.
@@ -15,12 +15,12 @@ experience  the user-level lesson store: merge, prune, rank, render
 agents_md   the guard that refuses to touch any AGENTS.md or agent config
 report      end-of-run tokens, cost estimate and savings
 status      session state rendering and the protected-file audit
-io          small file helpers, context loading, the [DualMind] progress lines
+io          small file helpers, context loading, the [Bigbrain] progress lines
 cli         the command line
 
 Typical use from an entry script::
 
-    from dualmind import cli
+    from bigbrain import cli
     raise SystemExit(cli.run())
 """
 

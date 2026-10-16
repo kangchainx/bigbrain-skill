@@ -1,6 +1,6 @@
-# Lessons: how DualMind learns, and what it never touches
+# Lessons: how Bigbrain learns, and what it never touches
 
-DualMind gets better at working with you by recording **lessons** — short, general,
+Bigbrain gets better at working with you by recording **lessons** — short, general,
 actionable notes about how you like work done and where the executor tends to slip — and
 feeding them back into the advisor the next time you escalate.
 
@@ -10,7 +10,7 @@ feeding them back into the advisor the next time you escalate.
 (global or project), `CLAUDE.md`, or any global Codex/Claude configuration file.**
 
 This is enforced, not merely promised. Every write the package makes goes through
-`dualmind/io.py`, which calls `dualmind/agents_md.py:guard_write` first; a write targeting a
+`bigbrain/io.py`, which calls `bigbrain/agents_md.py:guard_write` first; a write targeting a
 protected instruction file raises instead of succeeding. There is no pin/unpin feature and no
 "remember this in AGENTS.md" path, because that is not where lessons belong:
 
@@ -21,11 +21,11 @@ protected instruction file raises instead of succeeding. There is no pin/unpin f
 - they are the user's own configuration, and a skill has no business editing them silently
 
 Your `~/.codex/AGENTS.md` and `~/.claude/CLAUDE.md` are **untouched**. Lessons apply only
-while the DualMind skill is active. An audit surface exists so this is checkable rather than
+while the Bigbrain skill is active. An audit surface exists so this is checkable rather than
 taken on faith:
 
 ```bash
-python3 scripts/dualmind_cli.py status --audit ~/.codex     # names + sha256, read-only
+python3 scripts/bigbrain_cli.py status --audit ~/.codex     # names + sha256, read-only
 ```
 
 ## Where lessons live
@@ -33,15 +33,15 @@ python3 scripts/dualmind_cli.py status --audit ~/.codex     # names + sha256, re
 A **user-level** directory, never inside a repository or inside the skill package:
 
 ```
-${DUALMIND_HOME:-$HOME/.dualmind}/experience/
+${BIGBRAIN_HOME:-$HOME/.bigbrain}/experience/
     lessons.jsonl    one lesson per line
     lessons.md       a generated digest, grouped by kind (do not edit by hand)
 ```
 
-Override the directory with `DUALMIND_HOME` (the whole user-level tree) or
-`DUALMIND_EXPERIENCE_DIR` (just the store). The location is **validated, not documented**:
+Override the directory with `BIGBRAIN_HOME` (the whole user-level tree) or
+`BIGBRAIN_EXPERIENCE_DIR` (just the store). The location is **validated, not documented**:
 pointing it inside the skill package or inside the current git repository is refused, with an
-error telling you to set `DUALMIND_HOME`. A lessons file that lands in a repo gets committed;
+error telling you to set `BIGBRAIN_HOME`. A lessons file that lands in a repo gets committed;
 the whole point is that this store is yours, on this machine.
 
 ## The lesson record
@@ -51,7 +51,7 @@ the whole point is that this store is yours, on this machine.
   "id": "l2610161312451234",
   "text": "When asking for eviction, require the test to name the evicted key.",
   "kind": "codex_shortcoming",
-  "source_session": ".dualmind/session-cache",
+  "source_session": ".bigbrain/session-cache",
   "scope": "global",
   "confidence": 0.9,
   "created_at": "2026-10-16T13:12:45",
@@ -74,8 +74,8 @@ the whole point is that this store is yours, on this machine.
 ## How lessons get in
 
 1. **`lessons load` is the first step of the skill.** SKILL.md tells the executor to run
-   `dualmind_cli.py lessons list --limit 10` before anything else, and to follow what it
-   prints while DualMind is active.
+   `bigbrain_cli.py lessons list --limit 10` before anything else, and to follow what it
+   prints while Bigbrain is active.
 2. **Automatic injection.** The top N lessons are appended to the advisor's system prompt on
    every request, so the advisor plans with them in mind. Injected lessons have their `uses`
    counter bumped and `last_used_at` refreshed.
@@ -89,7 +89,7 @@ the whole point is that this store is yours, on this machine.
   existing one in the same scope merges into it: confidence is bumped by 0.10, the id and
   creation time are kept, and the longer wording wins. So repeatedly noticing the same thing
   makes one strong lesson, not fifty weak ones.
-- **Prune.** The store is capped (default 50, `DUALMIND_LESSON_CAP`) by
+- **Prune.** The store is capped (default 50, `BIGBRAIN_LESSON_CAP`) by
   `confidence × recency`, where recency halves every 30 days since `last_used_at`. Lessons you
   keep seeing stay; lessons that stopped mattering fade out.
 - **Rank.** Selection is the same score, so what gets injected is what is both trusted and
@@ -98,12 +98,12 @@ the whole point is that this store is yours, on this machine.
 ## Commands
 
 ```bash
-python3 scripts/dualmind_cli.py lessons list --limit 10        # top lessons, ranked
-python3 scripts/dualmind_cli.py lessons list --json            # machine-readable
-python3 scripts/dualmind_cli.py lessons add "Prefer unittest over pytest here" \
+python3 scripts/bigbrain_cli.py lessons list --limit 10        # top lessons, ranked
+python3 scripts/bigbrain_cli.py lessons list --json            # machine-readable
+python3 scripts/bigbrain_cli.py lessons add "Prefer unittest over pytest here" \
     --kind user_preference --confidence 0.8
-python3 scripts/dualmind_cli.py lessons prune --cap 50         # trim to the cap
-python3 scripts/dualmind_cli.py lessons export --out lessons.md
+python3 scripts/bigbrain_cli.py lessons prune --cap 50         # trim to the cap
+python3 scripts/bigbrain_cli.py lessons export --out lessons.md
 ```
 
 `list` accepts `--limit` (0 = all) and `--scope`; `add` accepts `--from-file FILE` to read the
@@ -113,13 +113,13 @@ text from a file. `export` writes the generated Markdown digest somewhere else, 
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `DUALMIND_HOME` | `~/.dualmind` | user-level tree containing `config.json` and `experience/` |
-| `DUALMIND_EXPERIENCE_DIR` | `$DUALMIND_HOME/experience` | the lesson store itself |
-| `DUALMIND_LESSON_INJECT` | `8` | how many top lessons go into each advisor request |
-| `DUALMIND_LESSON_CAP` | `50` | prune cap |
+| `BIGBRAIN_HOME` | `~/.bigbrain` | user-level tree containing `config.json` and `experience/` |
+| `BIGBRAIN_EXPERIENCE_DIR` | `$BIGBRAIN_HOME/experience` | the lesson store itself |
+| `BIGBRAIN_LESSON_INJECT` | `8` | how many top lessons go into each advisor request |
+| `BIGBRAIN_LESSON_CAP` | `50` | prune cap |
 
 ## Uninstalling
 
 `install.sh --uninstall` removes the skill and **keeps** the experience store, because those
-lessons are yours and outlast the skill. `--purge` removes `$DUALMIND_HOME` too — that is the
+lessons are yours and outlast the skill. `--purge` removes `$BIGBRAIN_HOME` too — that is the
 only thing that deletes your lessons, and it has to be asked for explicitly.

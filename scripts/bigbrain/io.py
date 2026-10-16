@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-from .config import DEFAULT_MAX_CONTEXT_CHARS, EXIT_CONFIG, DualmindError
+from .config import DEFAULT_MAX_CONTEXT_CHARS, EXIT_CONFIG, BigbrainError
 
 
 def write_json(path, obj):
@@ -38,7 +38,7 @@ def read_text_file(path, cap=None):
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        raise DualmindError("cannot read %s: %s" % (path, exc), EXIT_CONFIG)
+        raise BigbrainError("cannot read %s: %s" % (path, exc), EXIT_CONFIG)
     if cap is not None and len(text) > cap:
         dropped = len(text) - cap
         text = text[:cap] + "\n... [truncated: %d characters omitted] ..." % dropped
@@ -119,7 +119,7 @@ def eprint(*args, **kwargs):
 
 
 class Progress:
-    """Emitter for the ``[DualMind] ...`` progress lines (item 6).
+    """Emitter for the ``[Bigbrain] ...`` progress lines (item 6).
 
     Every step prints one line to stderr so a human watching the terminal can
     see what the loop is doing without reading the session JSON.  A progress
@@ -128,7 +128,7 @@ class Progress:
     that might embed credentials.
     """
 
-    PREFIX = "[DualMind]"
+    PREFIX = "[Bigbrain]"
 
     def __init__(self, stream=None, enabled=True):
         self.stream = stream if stream is not None else sys.stderr

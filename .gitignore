@@ -1,10 +1,10 @@
 # Session transcripts are workspace state: they contain task text, model replies
 # and file context. They are never committed and never installed.
-.dualmind/
+.bigbrain/
 
-# The experience store belongs at user level (${DUALMIND_HOME:-$HOME/.dualmind}).
+# The experience store belongs at user level (${BIGBRAIN_HOME:-$HOME/.bigbrain}).
 # It is ignored here as a safety net, so that a misconfigured store cannot be
-# committed from inside the skill directory. DualMind refuses to use a store in
+# committed from inside the skill directory. Bigbrain refuses to use a store in
 # this location anyway -- see references/experience.md.
 experience/
 lessons.jsonl

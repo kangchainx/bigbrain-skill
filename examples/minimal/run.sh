@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Walk the full DualMind milestone loop using the scripted replies in
+# Walk the full Bigbrain milestone loop using the scripted replies in
 # mock_rounds.json -- no API key, no network, no real advisor.
 #
 # Safe to run from anywhere: everything happens under a temporary HOME.
@@ -8,20 +8,20 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-CLI="$ROOT/scripts/dualmind_cli.py"
+CLI="$ROOT/scripts/bigbrain_cli.py"
 MOCK="$HERE/mock_rounds.json"
 
 PY="${PYTHON:-python3}"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/dualmind-example.XXXXXX")"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/bigbrain-example.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 export HOME="$WORK/home"
 export CODEX_HOME="$WORK/codex"
-export DUALMIND_HOME="$WORK/home/.dualmind"
-export DUALMIND_MOCK="$MOCK"
+export BIGBRAIN_HOME="$WORK/home/.bigbrain"
+export BIGBRAIN_MOCK="$MOCK"
 # A closed port: with --mock, nothing is ever sent here, which is the point.
-export DUALMIND_BASE_URL="http://127.0.0.1:9"
-export DUALMIND_API_KEY="not-a-real-key"
+export BIGBRAIN_BASE_URL="http://127.0.0.1:9"
+export BIGBRAIN_API_KEY="not-a-real-key"
 mkdir -p "$HOME" "$CODEX_HOME"
 
 SESSION="$WORK/session-cache"
@@ -100,7 +100,7 @@ step "7. the report"
 sed -n '/## Tokens/,/^## Learning/p' "$WORK/final.out"
 
 step "8. lessons saved (user level, never in the repo)"
-echo "store: $DUALMIND_HOME/experience"
+echo "store: $BIGBRAIN_HOME/experience"
 "$PY" "$CLI" lessons list --limit 5
 echo
 echo "AGENTS.md files created or modified anywhere here:"

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""dualmind command line -- the entry point the skill calls.
+"""bigbrain command line -- the entry point the skill calls.
 
-This file is deliberately thin: it only makes the ``dualmind`` package
-importable and hands over.  All logic lives in ``dualmind/cli.py``.
+This file is deliberately thin: it only makes the ``bigbrain`` package
+importable and hands over.  All logic lives in ``bigbrain/cli.py``.
 
     score    compute the escalation score and decide whether to escalate
     start    open a session; ask for the plan, milestones and criteria
@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dualmind import cli  # noqa: E402  (path setup must come first)
+from bigbrain import cli  # noqa: E402  (path setup must come first)
 
 if __name__ == "__main__":
     sys.exit(cli.run())

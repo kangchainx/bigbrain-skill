@@ -3,7 +3,7 @@
 Lessons the advisor learned about how this user likes to work live in a
 **user-level** directory, never inside a repository or inside the skill package:
 
-    ${DUALMIND_HOME:-$HOME/.dualmind}/experience/
+    ${BIGBRAIN_HOME:-$HOME/.bigbrain}/experience/
         lessons.jsonl   one lesson per line
         lessons.md      a generated, human-readable digest
 
@@ -13,7 +13,7 @@ A lesson store that lands in the repo gets committed, shared and stale; the
 whole point is that it is this user, on this machine.
 
 This module never reads or writes any AGENTS.md, and never touches any global
-Codex/Claude configuration.  See :mod:`dualmind.agents_md`.
+Codex/Claude configuration.  See :mod:`bigbrain.agents_md`.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ from .config import (
     LESSON_JACCARD_RATIO,
     LESSON_KINDS,
     LESSON_MERGE_RATIO,
-    DualmindError,
-    dualmind_home_dir,
+    BigbrainError,
+    bigbrain_home_dir,
     skill_root,
 )
 from .io import read_jsonl, write_text
@@ -83,19 +83,19 @@ def validate_store_dir(path, cwd=None, allow_inside_repo=False):
 
     root = skill_root()
     if is_inside(resolved, root):
-        raise DualmindError(
-            "refusing to use %s as the experience store: it is inside the dualmind skill "
-            "package (%s), which ships to other people. Set DUALMIND_HOME to a user-level "
-            "directory instead (default ~/.dualmind)." % (resolved, root),
+        raise BigbrainError(
+            "refusing to use %s as the experience store: it is inside the bigbrain skill "
+            "package (%s), which ships to other people. Set BIGBRAIN_HOME to a user-level "
+            "directory instead (default ~/.bigbrain)." % (resolved, root),
             EXIT_CONFIG,
         )
 
     repo = git_repo_root(cwd or os.getcwd())
     if repo is not None and is_inside(resolved, repo) and not allow_inside_repo:
-        raise DualmindError(
+        raise BigbrainError(
             "refusing to use %s as the experience store: it is inside the git repository at %s, "
-            "so lessons would be committed and shared. Set DUALMIND_HOME to a user-level "
-            "directory instead (default ~/.dualmind)." % (resolved, repo),
+            "so lessons would be committed and shared. Set BIGBRAIN_HOME to a user-level "
+            "directory instead (default ~/.bigbrain)." % (resolved, repo),
             EXIT_CONFIG,
         )
     return resolved
@@ -104,8 +104,8 @@ def validate_store_dir(path, cwd=None, allow_inside_repo=False):
 def resolve_store(env=None, cwd=None, allow_inside_repo=False, create=False):
     """Return the resolved experience-store directory."""
     env = os.environ if env is None else env
-    raw = (env.get("DUALMIND_EXPERIENCE_DIR") or "").strip()
-    base = Path(raw).expanduser() if raw else dualmind_home_dir(env) / EXPERIENCE_DIRNAME
+    raw = (env.get("BIGBRAIN_EXPERIENCE_DIR") or "").strip()
+    base = Path(raw).expanduser() if raw else bigbrain_home_dir(env) / EXPERIENCE_DIRNAME
     resolved = validate_store_dir(base, cwd=cwd, allow_inside_repo=allow_inside_repo)
     if create:
         resolved.mkdir(parents=True, exist_ok=True)
@@ -170,7 +170,7 @@ def make_lesson(
     """
     text = " ".join(str(text or "").split())
     if not text:
-        raise DualmindError("a lesson needs non-empty text", EXIT_CONFIG)
+        raise BigbrainError("a lesson needs non-empty text", EXIT_CONFIG)
     if kind not in LESSON_KINDS:
         kind = "workflow"
     try:
@@ -436,12 +436,12 @@ def mark_used(lessons, used_ids, when=None):
 def render_markdown(lessons):
     """Generate the human-readable digest, grouped by kind."""
     lines = [
-        "# dualmind lessons",
+        "# bigbrain lessons",
         "",
-        "Generated file -- edit `lessons.jsonl` or use `dualmind_cli.py lessons` instead.",
+        "Generated file -- edit `lessons.jsonl` or use `bigbrain_cli.py lessons` instead.",
         "",
         "Scope: this machine and user only. These lessons are injected into advisor",
-        "requests while the dualmind skill is active; they do not modify any AGENTS.md",
+        "requests while the bigbrain skill is active; they do not modify any AGENTS.md",
         "or any global Codex/Claude configuration.",
         "",
         "Total: %d" % len(lessons),
