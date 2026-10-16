@@ -805,6 +805,13 @@ def build_parser():
     setup.add_argument("--timeout", type=int, default=None,
                        help="seconds to wait for the validation request (default 20)")
     setup.add_argument("--quiet", action="store_true")
+    setup_action = setup.add_mutually_exclusive_group()
+    setup_action.add_argument("--web", action="store_true",
+                              help="serve the local HTTPS/password setup form; print its URL")
+    setup_action.add_argument("--list-models", action="store_true",
+                              help="read base_url/api_key JSON from stdin; return the full model catalogue as JSON")
+    setup_action.add_argument("--save", action="store_true",
+                              help="read base_url/api_key/model JSON from stdin; verify the selection and save")
 
     # -- lessons -------------------------------------------------------
     les = sub.add_parser("lessons", help="the user-level experience store (item 4)")
@@ -893,6 +900,15 @@ def main(argv=None):
         # before (and regardless of) the configuration check below.
         from . import setup_wizard
 
+        if args.web:
+            from .setup_web import run_server
+
+            return run_server(timeout=args.timeout or setup_wizard.VALIDATE_TIMEOUT)
+        if args.list_models or args.save:
+            return setup_wizard.run_json(
+                "save" if args.save else "list-models",
+                timeout=args.timeout or setup_wizard.VALIDATE_TIMEOUT,
+            )
         return setup_wizard.run_wizard(
             timeout=args.timeout or setup_wizard.VALIDATE_TIMEOUT
         )

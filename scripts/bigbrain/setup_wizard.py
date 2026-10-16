@@ -6,12 +6,12 @@ The flow:
    environment variables, ``ANTHROPIC_*`` environment variables, an existing
    ``config.json``, and the ``env`` block of ``~/.claude/settings.json``.  Each
    one found is shown (key masked) with its source and offered: "Use this?".
-2. Otherwise, **ask**: provider (Anthropic, OpenRouter or a custom URL), the API
-   key (hidden input) and the model, with a per-provider default.
-3. **Validate** with one tiny real request.  Failures are explained (bad key,
-   wrong URL, unknown model, network) and the user chooses: retry, edit, save
-   anyway, or abort.
-4. **Save** to ``config.json`` -- mode 600, directory 700.  That file is the
+2. Otherwise, **ask** for the provider and API key (hidden input).
+3. **Discover** the endpoint's complete model catalogue using that key, then
+   let the user select an exact id. Never supply guessed model defaults.
+4. **Validate** the selected model with one tiny real request. Failures allow
+   retry, edit or abort; only successful validation permits saving.
+5. **Save** to ``config.json`` -- mode 600, directory 700.  That file is the
    only thing this module ever writes.
 
 Reading ``~/.claude/settings.json`` is the one place bigbrain looks inside an
@@ -33,14 +33,15 @@ import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .agents_md import guard_write, is_inside_protected_dir
 from .check_config import PING_MAX_TOKENS, PING_PROMPT, classify_body
-from .client import post_messages
+from .client import list_models, model_ids, post_messages
 from .config import (
-    DEFAULT_MODEL,
     EXIT_AUTH,
     EXIT_CONFIG,
+    EXIT_HTTP,
     EXIT_MODEL,
     EXIT_NETWORK,
     EXIT_OK,
@@ -55,12 +56,11 @@ from .config import (
 ANTHROPIC_URL = "https://api.anthropic.com"
 OPENROUTER_URL = "https://openrouter.ai/api"
 
-#: (label, base url or None for "ask", default model).  OpenRouter spells
-#: Anthropic models ``anthropic/<id>`` with a dotted version.
+#: (label, base url or None for "ask"). Models always come from the endpoint.
 PROVIDERS = (
-    ("Anthropic (official)", ANTHROPIC_URL, DEFAULT_MODEL),
-    ("OpenRouter", OPENROUTER_URL, "anthropic/claude-opus-5.5"),
-    ("Custom URL (any Anthropic-compatible Messages API)", None, DEFAULT_MODEL),
+    ("Anthropic (official)", ANTHROPIC_URL),
+    ("OpenRouter", OPENROUTER_URL),
+    ("Custom URL (any Anthropic-compatible Messages API)", None),
 )
 
 #: The validation call is a one-word ping: it should answer in seconds, so it
@@ -70,6 +70,7 @@ VALIDATE_TOTAL_TIMEOUT = 45
 
 #: The three settings the wizard owns, as written to config.json.
 SAVED_KEYS = ("base_url", "api_key", "model")
+PREFERRED_MODEL = "claude-opus-5-5"
 
 EXIT_ABORTED = 1
 
@@ -83,13 +84,6 @@ class Aborted(Exception):
 # --------------------------------------------------------------------------
 
 
-def default_model_for(base_url):
-    for _, url, model in PROVIDERS:
-        if url and (base_url or "").rstrip("/") == url:
-            return model
-    return DEFAULT_MODEL
-
-
 def _candidate(source, base_url, api_key, model, notes=()):
     base_url = (base_url or "").strip().rstrip("/")
     notes = list(notes)
@@ -97,8 +91,8 @@ def _candidate(source, base_url, api_key, model, notes=()):
         base_url = ANTHROPIC_URL
         notes.append("no base URL set; assuming Anthropic official")
     if not (model or "").strip():
-        model = default_model_for(base_url)
-        notes.append("no model set; using the default")
+        model = ""
+        notes.append("choose a model after querying the endpoint")
     return {
         "source": source,
         "base_url": base_url,
@@ -130,7 +124,7 @@ def detect(env=None, home=None):
     """Every usable existing configuration, in precedence order, de-duplicated.
 
     A candidate needs at least an API key; a missing base URL means Anthropic
-    official and a missing model means the provider default.
+    official. Models are selected only after querying the endpoint.
     """
     env = os.environ if env is None else env
     found = []
@@ -199,7 +193,7 @@ def _display_path(path):
 def _scrub(text, api_key):
     """Remove the key from any text that might be shown (error bodies echo headers)."""
     text = str(text or "")
-    if api_key and len(api_key) >= 4:
+    if api_key:
         text = text.replace(api_key, mask_secret(api_key))
     return text
 
@@ -213,13 +207,117 @@ def _mentions_model(text):
     return bool(re.search(r"\bmodel", text or "", re.IGNORECASE))
 
 
+def credentials(base_url, api_key):
+    """Validate explicit input without borrowing credentials from the environment."""
+    if not isinstance(base_url, str) or not isinstance(api_key, str) or not api_key.strip():
+        raise BigbrainError("base_url and api_key are required strings", EXIT_CONFIG)
+    if any(ord(char) < 32 or ord(char) > 126 for char in api_key.strip()):
+        raise BigbrainError("api_key must contain printable ASCII characters without line breaks",
+                            EXIT_CONFIG)
+    base_url = base_url.strip().rstrip("/")
+    try:
+        url = urlsplit(base_url)
+        valid = (url.scheme == "https" and url.hostname and not url.username
+                 and not url.password and not url.query and not url.fragment
+                 and not re.search(r"\s", base_url))
+        url.port  # Validate the port before handing the URL to urllib.
+    except ValueError:
+        valid = False
+    if not valid:
+        raise BigbrainError("base_url must be an HTTPS API root without credentials, query or fragment",
+                            EXIT_CONFIG)
+    if base_url.endswith("/v1"):
+        base_url = base_url[:-3]
+    return {"base_url": base_url, "api_key": api_key.strip()}
+
+
+def discover_models(base_url, api_key, timeout=VALIDATE_TIMEOUT):
+    """Return every catalogue id, including Anthropic cursor pages, without saving.
+
+    A catalogue response is not proof that each model can generate. The chosen
+    model still needs a Messages request before the configuration can be saved.
+    """
+    cfg = credentials(base_url, api_key)
+    ids, seen_cursors = [], set()
+    cursor = None
+    deadline = time.monotonic() + VALIDATE_TOTAL_TIMEOUT
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise BigbrainError("model discovery timed out before all pages were read", EXIT_NETWORK)
+            body = list_models(cfg, timeout=min(timeout, remaining), after_id=cursor,
+                               total_timeout=remaining)
+            page = model_ids(body)
+            if not page or any(not item.strip() for item in page):
+                raise BigbrainError("model catalogue is empty or unrecognised; no models were selected",
+                                    EXIT_HTTP)
+            ids.extend(page)
+            if not isinstance(body, dict) or not body.get("has_more"):
+                return list(dict.fromkeys(ids))
+            cursor = body.get("last_id")
+            if not isinstance(cursor, str) or not cursor or cursor in seen_cursors:
+                raise BigbrainError("model catalogue pagination did not advance; list is incomplete",
+                                    EXIT_HTTP)
+            seen_cursors.add(cursor)
+    except BigbrainError as exc:
+        # A provider can echo authorization headers in its error body.
+        raise BigbrainError(_scrub(str(exc), cfg["api_key"]), exc.exit_code) from None
+
+
+def configure(values, save=False, timeout=VALIDATE_TIMEOUT):
+    """Shared browser/JSON setup: explicit credentials, discovery, then verified save."""
+    if not isinstance(values, dict):
+        raise BigbrainError("input must be a JSON object", EXIT_CONFIG)
+    cfg = credentials(values.get("base_url"), values.get("api_key"))
+    models = discover_models(**cfg, timeout=timeout)
+    result = {"ok": True, "base_url": cfg["base_url"], "models": models,
+              "recommended_model": PREFERRED_MODEL if PREFERRED_MODEL in models else None,
+              "generation_verified": False}
+    if save:
+        model = values.get("model")
+        if not isinstance(model, str) or model not in models:
+            raise BigbrainError("select an exact model id from the returned catalogue", EXIT_CONFIG)
+        cfg["model"] = model
+        ok, message = validate(**cfg, timeout=timeout)
+        if not ok:
+            raise BigbrainError(message, EXIT_HTTP)
+        path = save_config(cfg)
+        overridden = ["BIGBRAIN_" + name.upper() for name in SAVED_KEYS
+                      if os.environ.get("BIGBRAIN_" + name.upper())
+                      and os.environ["BIGBRAIN_" + name.upper()] != cfg[name]]
+        result.update(model=model, generation_verified=True, config_file=str(path),
+                      environment_overrides=overridden)
+    return result
+
+
+def run_json(action, timeout=VALIDATE_TIMEOUT):
+    """Codex dialog helper: read explicit credentials from stdin, emit safe JSON."""
+    api_key = ""
+    try:
+        try:
+            values = json.load(sys.stdin)
+        except ValueError:
+            raise BigbrainError("stdin must contain a JSON object", EXIT_CONFIG)
+        if not isinstance(values, dict):
+            raise BigbrainError("stdin must contain a JSON object", EXIT_CONFIG)
+        api_key = values.get("api_key") if isinstance(values.get("api_key"), str) else ""
+        result = configure(values, save=action == "save", timeout=timeout)
+        print(json.dumps(result, ensure_ascii=False))
+        return EXIT_OK
+    except BigbrainError as exc:
+        print(json.dumps({"ok": False, "error": _scrub(str(exc), api_key)}, ensure_ascii=False))
+        return exc.exit_code
+
+
 def validate(base_url, api_key, model, timeout=VALIDATE_TIMEOUT):
     """One tiny real request.  Returns ``(ok, message)``; the message never holds the key."""
-    if not re.match(r"^https?://[^/\s]+", base_url or ""):
-        return False, "the base URL must start with http:// or https:// and include a host"
+    try:
+        checked = credentials(base_url, api_key)
+    except BigbrainError as exc:
+        return False, str(exc)
     cfg = {
-        "base_url": base_url.rstrip("/"),
-        "api_key": api_key,
+        **checked,
         "model": model,
         "stream": True,
         "retries": 0,
@@ -415,20 +513,20 @@ def show_summary(io, cand, heading):
 
 
 def guided(io, prefill=None):
-    """Ask for provider, key and model.  ``prefill`` supplies the defaults."""
+    """Ask for provider and key; model selection follows successful discovery."""
     prefill = prefill or {}
     io.out("")
     io.out("Provider:")
     old_url = prefill.get("base_url") or ""
-    preset_urls = [url for _, url, _ in PROVIDERS]
+    preset_urls = [url for _, url in PROVIDERS]
     if old_url in preset_urls:
         current = preset_urls.index(old_url) + 1
     else:
         current = len(PROVIDERS) if old_url else 1
-    for index, (label, url, _) in enumerate(PROVIDERS, 1):
+    for index, (label, url) in enumerate(PROVIDERS, 1):
         io.out("  %d) %s%s" % (index, label, "  %s" % url if url else ""))
     choice = io.choose("Choose", [str(i) for i in range(1, len(PROVIDERS) + 1)], str(current))
-    _, base_url, model_default = PROVIDERS[int(choice) - 1]
+    _, base_url = PROVIDERS[int(choice) - 1]
 
     if base_url is None:
         custom_default = "" if old_url in preset_urls else old_url
@@ -438,11 +536,13 @@ def guided(io, prefill=None):
             if base_url.endswith("/v1"):
                 base_url = base_url[: -len("/v1")]
                 io.out("  (dropped the trailing /v1 -- Bigbrain appends /v1/messages itself)")
-            if re.match(r"^https?://[^/\s]+", base_url):
+            try:
+                credentials(base_url, "url-check")
                 break
-            io.out("  The URL must start with http:// or https:// and include a host.")
+            except BigbrainError as exc:
+                io.out("  %s" % exc)
 
-    old_key = prefill.get("api_key") or ""
+    old_key = prefill.get("api_key") if prefill.get("base_url") == base_url else ""
     while True:
         if old_key:
             key = io.secret("API key (input hidden; Enter keeps %s): " % mask_secret(old_key))
@@ -453,10 +553,30 @@ def guided(io, prefill=None):
             break
         io.out("  An API key is required.")
 
-    if prefill.get("model") and prefill.get("base_url") == base_url:
-        model_default = prefill["model"]
-    model = io.ask("Model", model_default)
-    return {"source": "entered", "base_url": base_url, "api_key": key, "model": model, "notes": []}
+    return {"source": "entered", "base_url": base_url, "api_key": key, "model": "", "notes": []}
+
+
+def select_model(io, models):
+    if PREFERRED_MODEL in models:
+        io.out("  1) Claude Opus 5.5 (recommended): %s" % PREFERRED_MODEL)
+        io.out("  2) Other models")
+        choice = io.choose("Model (number or exact id)", ["1", "2", PREFERRED_MODEL], "")
+        if choice in ("1", PREFERRED_MODEL):
+            return PREFERRED_MODEL
+        models = [model for model in models if model != PREFERRED_MODEL]
+        if not models:
+            io.out("No other models were returned.")
+            return select_model(io, [PREFERRED_MODEL])
+    io.out("Models returned by this endpoint (generation is verified after selection):")
+    for index, model in enumerate(models, 1):
+        io.out("  %d) %s" % (index, model))
+    while True:
+        selected = io.ask("Model (number or exact id)")
+        if selected in models:
+            return selected
+        if selected.isdigit() and 1 <= int(selected) <= len(models):
+            return models[int(selected) - 1]
+        io.out("Choose one of the returned models.")
 
 
 # --------------------------------------------------------------------------
@@ -492,21 +612,25 @@ def run_wizard(env=None, io=None, timeout=VALIDATE_TIMEOUT, home=None):
 
         while True:
             io.out("")
-            io.out("Validating: one tiny request to %s/v1/messages (model %s) ..."
-                   % (chosen["base_url"], chosen["model"]))
-            ok, message = validate(chosen["base_url"], chosen["api_key"], chosen["model"], timeout)
+            try:
+                io.out("Checking the API URL and key: fetching the complete model catalogue ...")
+                chosen.update(credentials(chosen["base_url"], chosen["api_key"]))
+                models = discover_models(chosen["base_url"], chosen["api_key"], timeout)
+                chosen["model"] = select_model(io, models)
+                io.out("Validating: one tiny request to %s/v1/messages (model %s) ..."
+                       % (chosen["base_url"], chosen["model"]))
+                ok, message = validate(chosen["base_url"], chosen["api_key"], chosen["model"], timeout)
+            except BigbrainError as exc:
+                ok, message = False, _scrub(str(exc), chosen["api_key"])
             if ok:
                 io.out("OK: %s" % message)
                 return _save_and_report(io, chosen, env)
             io.out("FAILED: %s" % message)
             choice = io.choose(
-                "[r]etry, [e]dit settings, [s]ave anyway, or [a]bort?", ["r", "e", "s", "a"], "r"
+                "[r]etry, [e]dit settings, or [a]bort?", ["r", "e", "a"], "a"
             )
             if choice == "e":
                 chosen = guided(io, chosen)
-            elif choice == "s":
-                io.out("Saving without a successful validation.")
-                return _save_and_report(io, chosen, env)
             elif choice == "a":
                 raise Aborted()
     except Aborted as exc:

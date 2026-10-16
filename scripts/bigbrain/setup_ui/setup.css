@@ -1,0 +1,41 @@
+:root { color-scheme: light; --paper: #f5f3ec; --ink: #252723; --muted: #73766b; --line: #dcded3; --accent: #d65031; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 36px 24px; background: var(--paper); color: var(--ink); font: 15px/1.65 "Avenir Next", "PingFang SC", sans-serif; }
+main { max-width: 660px; margin: 0 auto; }
+header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 24px; }
+.brand { font: 600 29px/1 "Avenir Next", sans-serif; letter-spacing: -1.5px; }
+.dot { color: var(--accent); font-size: 12px; margin-left: 5px; }
+.local { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 30px; padding: 3px 12px; }
+ol { display: flex; gap: 24px; list-style: none; padding: 0; margin: 28px 0 50px; font-size: 13px; }
+li { color: var(--muted); } li span { margin-right: 7px; font-family: "SFMono-Regular", monospace; font-size: 11px; }
+li[aria-current] { color: var(--accent); font-weight: 600; }
+.eyebrow { font-size: 12px; color: var(--accent); letter-spacing: 2px; margin: 0 0 14px; }
+h1 { font-size: clamp(25px, 4vw, 35px); letter-spacing: -1px; line-height: 1.35; margin: 0 0 14px; font-weight: 600; }
+.intro { color: var(--muted); margin: 0 0 30px; }
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 9px; }
+input[type="url"], input[type="password"], select { width: 100%; background: #fffef9; border: 1px solid #bec2b3; border-radius: 8px; padding: 15px 16px; color: var(--ink); font: inherit; }
+input:focus-visible, select:focus-visible, button:focus-visible, .choice:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+input::placeholder { color: #94968c; } .hint { font-size: 12px; color: var(--muted); margin: 10px 0 28px; }
+button, select, input[type="radio"], .choice { cursor: pointer; }
+button { font: inherit; border: 0; } button:disabled { cursor: wait; opacity: .55; }
+.primary { background: var(--ink); color: #fffef9; border-radius: 8px; padding: 13px 20px; min-height: 48px; font-size: 14px; display: flex; gap: 30px; align-items: center; justify-content: space-between; margin-left: auto; transition: background .15s; }
+.primary:hover { background: #41473a; }
+.actions { display: flex; align-items: center; gap: 18px; } .back { background: transparent; color: var(--muted); font-size: 13px; padding: 10px 0; }
+.back:hover { color: var(--ink); }
+.endpoint { font: 13px/1.6 "SFMono-Regular", monospace; background: #e9ebdf; border-radius: 6px; padding: 10px 13px; overflow-wrap: anywhere; margin: -12px 0 24px; }
+fieldset { padding: 0; margin: 0; border: 0; }
+.choice { display: flex; align-items: center; gap: 14px; border: 1px solid var(--line); background: #fffef9; padding: 18px; border-radius: 9px; margin-bottom: 12px; }
+.choice:has(input:checked) { border-color: var(--accent); background: #fcf3e9; }
+.choice input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
+.choice strong { font-size: 16px; font-weight: 500; } .choice small { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+em { font: 11px "PingFang SC", sans-serif; color: var(--accent); margin-left: 8px; }
+#other-models { margin-top: 20px; }
+#status { color: var(--muted); font-size: 13px; min-height: 22px; margin-top: 22px; }
+#error { color: #923526; background: #f9e8e0; border-radius: 6px; padding: 12px; overflow-wrap: anywhere; font-size: 13px; }
+.done-mark { color: #526442; font-size: 36px; margin-bottom: 20px; }
+#done-step .endpoint { margin-top: 22px; }
+footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); margin-top: 38px; padding-top: 20px; color: var(--muted); font: 10px "SFMono-Regular", monospace; letter-spacing: 1px; }
+footer button { background: transparent; color: var(--muted); font-size: 12px; letter-spacing: 0; padding: 5px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+[hidden] { display: none !important; }
+@media (max-width: 480px) { body { padding: 24px 20px; } ol { gap: 16px; margin-bottom: 34px; } .primary { gap: 14px; } h1 { letter-spacing: -.5px; } }

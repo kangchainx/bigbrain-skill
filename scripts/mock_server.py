@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import sys
 import threading
 import time
@@ -457,10 +458,14 @@ class Handler(BaseHTTPRequestHandler):
 def serve(args):
     state = State(args)
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    if args.tls_cert:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.tls_cert, args.tls_key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
     server.state = state
     server.verbose = not args.quiet
     host, port = server.server_address[0], server.server_address[1]
-    url = "http://%s:%d" % (host, port)
+    url = "%s://%s:%d" % ("https" if args.tls_cert else "http", host, port)
 
     if args.port_file:
         Path(args.port_file).write_text(str(port), encoding="utf-8")
@@ -496,6 +501,8 @@ def main(argv=None):
     parser.add_argument("--requests-out", default=None,
                         help="write the received requests here on shutdown")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--tls-cert", help="local test certificate")
+    parser.add_argument("--tls-key", help="local test private key")
     args = parser.parse_args(argv)
 
     if not args.quiet:

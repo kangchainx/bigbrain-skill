@@ -123,21 +123,21 @@ is copied into place.
 
 Any Anthropic-compatible Messages API works: Anthropic itself or a relay.
 
-The easiest way is the setup wizard. `install.sh` offers to run it when you install from a
-terminal (`Configure now? [Y/n]`); run it any time with:
+In Codex, ask Bigbrain to configure the API. The skill opens its local form in
+the in-app browser, one step at a time: HTTPS API URL, a hidden password field for
+the key, then model selection. Claude Opus 5.5 is recommended only when the endpoint
+lists its exact id; the rest remain under **Other models**. A tiny real request
+must pass before configuration is saved. Keys never need to enter the chat.
 
 ```bash
-python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup    # or: scripts/setup.py
+python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup --web
 ```
 
-It looks for an existing configuration first — `BIGBRAIN_*` and `ANTHROPIC_*` environment
-variables, `~/.bigbrain/config.json`, and the `env` block of `~/.claude/settings.json` (only
-read, never modified) — and asks `Use this? [Y/n]`. Otherwise it asks for the provider
-(Anthropic, OpenRouter, or a custom URL), the API key (hidden input) and the model. It then
-sends one tiny request and explains a failure (rejected key, wrong URL, unknown model,
-network) before offering retry / edit / save anyway / abort. The only file it writes is
-`~/.bigbrain/config.json`, mode `600` in a `700` directory. If Bigbrain runs unconfigured,
-`check_config.py` and the CLI print this exact command.
+Open the printed URL and leave the process running while filling the form. It exits
+after save/cancel or 15 minutes. See [configuration](references/config.md#configuration-in-codex).
+For a terminal wizard with hidden key input, omit `--web`. Only
+`~/.bigbrain/config.json` is written, mode `600` in a `700` directory; existing
+Codex/Claude configuration is never modified.
 
 Or set the environment yourself:
 

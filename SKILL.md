@@ -27,23 +27,39 @@ is active. See `references/experience.md`.
 
 ## Step 1 — hard prerequisite: configuration must pass
 
+If the user asks to configure or replace credentials, enter the configuration
+flow below directly; do not probe the old endpoint first.
+
 ```bash
 python3 <skill>/scripts/check_config.py
 ```
 
 - Exit `0` and prints `OK` → proceed.
-- Exit `2` (not configured) → the checker prints the exact setup command. Tell the user to
-  run it themselves in a terminal — it is interactive and asks for their API key:
-
-  ```bash
-  python3 <skill>/scripts/bigbrain_cli.py setup
-  ```
-
-  The wizard detects an existing configuration (`BIGBRAIN_*` / `ANTHROPIC_*` env,
-  `~/.bigbrain/config.json`, the `env` block of `~/.claude/settings.json` — read-only), or
-  asks for provider, key and model; validates with one tiny request; and writes only
-  `~/.bigbrain/config.json` (mode 600). Environment variables still override that file.
-  Do not run the wizard on the user's behalf and never type a key into it yourself.
+- Exit `2` (not configured), or the user asks to configure/change the API → follow
+  [configuration](references/config.md#configuration-in-codex). Start
+  `python3 <skill>/scripts/bigbrain_cli.py setup --web` and keep the process running.
+  It prints a `setup_url`; open that exact URL in the Codex in-app browser using
+  `open_in_codex` (browser target), or provide the link if that tool is unavailable.
+- Configuration is part of the skill's local form, **one step at a time**:
+  HTTPS API address → API key in a **password input** → model choice. Never collect
+  keys through Codex's ordinary question tool or chat text; it has no password field.
+  Do not launch the terminal wizard unless the user specifically requests it.
+- The form fetches the endpoint's complete model catalogue before offering a model.
+  When the exact id `claude-opus-5-5` is present, recommend **Claude Opus 5.5** and put
+  the remaining ids under **Other models**. If absent, let the user choose from the
+  catalogue; never invent, map or substitute an Opus id. Do not dump every model
+  into the initial choice screen.
+- A catalogue is not proof of successful generation. The form validates the selected
+  model with one tiny real Messages request; only success saves configuration. Never
+  save after a failed validation or silently switch providers/keys/models.
+- Let the user fill the password field themselves. Do not inspect its value, take DOM
+  snapshots while it contains a real key, or echo credentials into messages/logs.
+  The browser sends them only to the local helper, which uses the chosen HTTPS API.
+  No key is put in the page URL or browser storage. The helper exits after save/cancel
+  or 15 minutes; if it expires, start it again and open the new URL.
+- Wait for the helper's final `saved` result, or inspect only non-secret config fields
+  after the user reports completion. Report any `environment_overrides`; do not claim
+  the saved file is effective when environment variables still override it.
 - Any other exit code → **do not escalate**. Tell the user which variable is wrong (the
   checker names it) and what to set. Never invent, guess or echo an API key, and never
   continue with a partially configured advisor.

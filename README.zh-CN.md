@@ -43,19 +43,19 @@ curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/inst
 
 ## 配置
 
-最简单的方式是运行配置向导。在终端中执行 `install.sh` 时会询问 `Configure now? [Y/n]`；
-之后也可以随时运行：
+在 Codex 中让 Bigbrain 配置 API，skill 会在内置浏览器打开本机配置表单，**一次只填一项**：
+HTTPS 地址 → 密码框输入 API Key → 模型选择。无需把 Key 发到聊天里。
+
+接口返回 `claude-opus-5-5` 时首推 **Claude Opus 5.5**，其余模型放在「其他模型」中展开选择；
+不会猜测或替换模型。选定后发送一次极小的真实请求，成功才保存，失败不覆盖已有配置。
 
 ```bash
-python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup    # 或 scripts/setup.py
+python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup --web
 ```
 
-向导会先（只读地）查找已有配置：`BIGBRAIN_*` 与 `ANTHROPIC_*` 环境变量、`~/.bigbrain/config.json`、
-`~/.claude/settings.json` 中的 `env` 段，找到后显示脱敏摘要并询问 `Use this? [Y/n]`；否则依次询问
-服务商（Anthropic 官方、OpenRouter 或自定义 URL）、API Key（输入不回显）和模型。随后发送一次极小的
-真实请求进行验证，失败时说明原因（Key 被拒、URL 错误、模型不存在、网络问题），并可选择重试 / 修改 /
-仍然保存 / 放弃。向导只写入 `~/.bigbrain/config.json`（权限 600，目录 700）。未配置时运行
-`check_config.py` 或 CLI，会打印上述完整命令。
+打开输出的链接，填写期间保持进程运行；保存、取消或 15 分钟后进程退出。
+详见[配置流程](references/config.md#configuration-in-codex)。需要终端向导时去掉 `--web`。
+配置只写入 `~/.bigbrain/config.json`（权限 600，目录 700），不会修改 Codex/Claude 配置。
 
 也可以直接设置环境变量（环境变量优先于 `config.json`）：
 

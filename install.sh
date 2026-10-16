@@ -223,7 +223,7 @@ if [ -n "$DEST" ]; then
 else
   SKILL_PATH="$PRIMARY_DIR/bigbrain"
 fi
-SETUP_CMD="python3 $SKILL_PATH/scripts/bigbrain_cli.py setup"
+SETUP_CMD="python3 $SKILL_PATH/scripts/bigbrain_cli.py setup --web"
 CHECK_CMD="python3 $SKILL_PATH/scripts/check_config.py"
 
 echo
@@ -256,8 +256,9 @@ if [ "$configured" -eq 1 ]; then
   echo "Configured. Check it any time with:"
   echo "  $CHECK_CMD"
 else
-  echo "Next: configure the advisor endpoint with the setup wizard:"
+  echo "Next: configure the advisor endpoint in the Codex in-app browser:"
   echo "  $SETUP_CMD"
+  echo "Open the printed setup_url in Codex and keep the process running until setup completes."
   echo "(or export BIGBRAIN_BASE_URL and BIGBRAIN_API_KEY), then:"
   echo "  $CHECK_CMD   # must print OK before use"
 fi

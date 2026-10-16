@@ -16,35 +16,82 @@ Authorization: Bearer <key>
 
 | Variable | Meaning |
 |----------|---------|
-| `BIGBRAIN_BASE_URL` | Base URL of the API, **without** a trailing `/v1`. Must start with `http://` or `https://` and include a host. Example: `https://api.anthropic.com` |
+| `BIGBRAIN_BASE_URL` | Base URL of the API, **without** a trailing `/v1`. Setup requires `https://` and a host. Example: `https://api.anthropic.com` |
 | `BIGBRAIN_API_KEY` | The key, sent as both `x-api-key` and `Authorization: Bearer` |
 
 Without both, the skill refuses to run. `scripts/check_config.py` reports exactly which one is
 missing or malformed, prints the setup command below, and refuses to continue until it is fixed.
 
-## Setup wizard
+## Configuration in Codex
+
+Start the built-in local configuration form:
 
 ```bash
-python3 scripts/bigbrain_cli.py setup     # same as: python3 scripts/setup.py
+python3 <skill>/scripts/bigbrain_cli.py setup --web
 ```
 
-1. **Detect** (read-only), in this order: `BIGBRAIN_*` env, `ANTHROPIC_BASE_URL` +
-   `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` env, an existing `config.json`, and the `env`
-   block of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`). Each one found
-   is shown with its source and a masked key, then `Use this? [Y/n]`.
-2. **Ask** when nothing is found or everything is declined: provider (Anthropic
-   `https://api.anthropic.com`, OpenRouter `https://openrouter.ai/api`, or a custom URL — a
-   trailing `/v1` is dropped), API key (hidden), model (default per provider, editable).
-3. **Validate** with one `max_tokens=16` streamed request (20s timeout, `--timeout` to
-   change). Failures are explained — `401/403` rejected key, `404` model vs. endpoint not
-   found, network errors, a non-Messages response — and you choose retry, edit, save anyway
-   or abort. Nothing is saved on abort.
-4. **Save** `base_url`, `api_key` and `model` into `config.json` (other keys in the file are
-   kept), mode `600`, directory `700`.
+Keep that process running. Its first stdout line is JSON containing `setup_url`.
+Open that exact URL in the Codex in-app browser (`open_in_codex`, browser target).
+If that UI tool is unavailable, give the user the link to open. This is the skill's
+configuration UI, not an external hosted site or a terminal prompt.
 
-It writes nothing else: no AGENTS.md, no agent configuration. `install.sh` offers to run it
-on an interactive terminal (`--no-setup` skips that); non-interactive installs print the
-command instead.
+The form has three steps:
+
+1. **API address:** a URL input requiring `https://`, with matching server-side
+   validation. Credentials, query strings and fragments in the URL are rejected.
+   A trailing `/v1` is removed because the client appends API routes itself.
+2. **API Key:** a password input, hidden from view. The user types it themselves;
+   do not ask for it in chat or a normal Codex question box, and do not inspect
+   the populated field through browser automation. It is never returned to the
+   browser, put in a URL, logged, or saved to browser storage. The helper keeps
+   it in memory until the configuration succeeds, is cancelled, or expires.
+3. **Model:** after the full authenticated catalogue query succeeds, show
+   **Claude Opus 5.5 (recommended)** only if `claude-opus-5-5` was returned. Other
+   models stay under **Other models** until the user expands them. If the preferred
+   id is absent, only the actual returned models are offered. Never guess aliases.
+   A tiny Messages request validates the selected model before saving.
+
+A public catalogue may return data even for an invalid key. Catalogue discovery
+therefore does not prove the key can generate; successful generation is required
+before saving. Discovery errors, missing models and failed probes leave the old
+configuration intact. No bulk generation requests are needed to build the list.
+
+The page uses a loopback HTTP server on a random port; **provider API URLs require
+HTTPS**. The server binds only to `127.0.0.1`, requires the per-launch session token
+and matching Origin/Host for writes, serves no external assets, and disables caching.
+Credentials are sent only to that local server and the user's chosen HTTPS provider;
+API redirects to a different origin or an insecure scheme are refused.
+The page closes its configuration session after save/cancel; an unused server expires
+after 15 minutes. On expiry, launch a new session instead of reusing the stale link.
+
+The final stdout line reports `saved` plus the selected model and any
+`environment_overrides`, never the key. A saved file is not necessarily the effective
+configuration when an overriding environment variable is present. Saving only updates
+`~/.bigbrain/config.json` (mode `600`, directory `700`), preserving unrelated fields.
+No Codex/Claude configuration or `AGENTS.md` is modified.
+
+### Programmatic helpers
+
+`setup --list-models` and `setup --save` are also available for trusted local callers.
+They read JSON with explicit `base_url`, `api_key` (and `model` for save) from stdin.
+Pass it through a JSON serializer and subprocess stdin, never command-line arguments
+or shell interpolation. These helpers do not authorize asking for a key in plain chat.
+`--list-models` returns all catalogue ids, `recommended_model` (or null), and
+`generation_verified: false`, without saving. `--save` rechecks catalogue membership,
+probes that exact model, and only then writes configuration. Errors return nonzero.
+
+## Terminal setup wizard
+
+Available when explicitly requested, or from a manual interactive install:
+
+```bash
+python3 scripts/bigbrain_cli.py setup
+```
+
+It offers detected configuration with masked keys, or asks for an HTTPS address and
+hidden key. After catalogue discovery it recommends Opus 5.5 when present, with other
+models behind a separate choice. Failed validation offers retry, edit or abort, never
+save-anyway. `install.sh --no-setup` skips the terminal prompt for scripted installs.
 
 ## Optional (defaults shown)
 
@@ -66,10 +113,8 @@ command instead.
 
 #### Model ids are provider-specific
 
-Anthropic's own ids are dotted (`claude-opus-5.5`), while many relays spell the
-same model with hyphens (`claude-opus-5-5`). There is no universal spelling:
-whatever the endpoint accepts is the correct id, and the endpoint itself is the
-authority on what it accepts. Ask it:
+Model ids are provider-specific. Use the exact id returned by the endpoint;
+do not infer aliases or translate punctuation. Inspect its catalogue with:
 
 ```bash
 scripts/check_config.py --list-models
@@ -77,8 +122,9 @@ scripts/check_config.py --list-models
 
 That calls `GET {BIGBRAIN_BASE_URL}/v1/models` and prints the ids the endpoint
 serves, marking the one you have configured. If your configured id is not in
-that list, the command says so. Not every provider exposes the route — a `404`
-there means falling back to the provider's own documentation.
+that list, the command says so. The setup form requires this catalogue: if the
+route fails (including `404`), setup stops without saving. Check the provider's
+documentation to correct the endpoint before retrying.
 
 #### Streaming and timeouts
 

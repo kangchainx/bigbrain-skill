@@ -34,8 +34,10 @@ import json
 import os
 import re
 import socket
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from .config import (
@@ -72,11 +74,21 @@ def _is_loopback(url):
     return m.group(1).lower() in ("127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0")
 
 
+class CredentialRedirect(urllib.request.HTTPRedirectHandler):
+    """Do not forward API credentials to another origin or downgrade HTTPS."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if (old.scheme, old.netloc.lower()) != (new.scheme, new.netloc.lower()):
+            raise urllib.error.HTTPError(req.full_url, code, "cross-origin API redirect refused", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _opener(url):
     """Bypass ambient proxy settings for loopback URLs (keeps local mocks sane)."""
     if _is_loopback(url):
-        return urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    return urllib.request.build_opener()
+        return urllib.request.build_opener(urllib.request.ProxyHandler({}), CredentialRedirect())
+    return urllib.request.build_opener(CredentialRedirect())
 
 
 def _short_body(text, limit=400):
@@ -740,7 +752,34 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
 # --------------------------------------------------------------------------
 
 
-def list_models(cfg, timeout=None):
+def _read_catalogue(response, deadline):
+    """Stop even a continuously trickling body when its total budget expires."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("model catalogue time budget exhausted")
+    # urllib exposes the HTTPResponse's buffered socket here. Shutdown interrupts
+    # an active read; closing the buffered response from another thread can block.
+    sock = response.fp.raw._sock
+
+    def interrupt():
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # The response may have already closed the socket at EOF.
+
+    timer = threading.Timer(remaining, interrupt)
+    timer.daemon = True
+    timer.start()
+    try:
+        return response.read().decode("utf-8", "replace")
+    finally:
+        timer.cancel()
+        timer.join()
+        if time.monotonic() >= deadline:
+            raise TimeoutError("model catalogue time budget exhausted")
+
+
+def list_models(cfg, timeout=None, after_id=None, total_timeout=None):
     """GET ``{base}/v1/models`` and return the decoded body.
 
     Relays expose the model ids they actually serve here, which is the reliable
@@ -751,40 +790,52 @@ def list_models(cfg, timeout=None):
     if not base:
         raise BigbrainError("BIGBRAIN_BASE_URL is not set", EXIT_CONFIG)
     target = models_url(cfg)
+    if after_id is not None:
+        target += "?" + urllib.parse.urlencode({"after_id": after_id})
     headers = dict(_headers(cfg))
     headers["accept"] = "application/json"
     request = urllib.request.Request(target, headers=headers, method="GET")
     per_read = timeout or cfg.get("timeout") or DEFAULT_TIMEOUT
+    total = total_timeout if total_timeout is not None else cfg.get("max_total_timeout") or DEFAULT_MAX_TOTAL_TIMEOUT
+    deadline = time.monotonic() + total
     try:
-        with _opener(target).open(request, timeout=per_read) as response:
-            text = response.read().decode("utf-8", "replace")
+        try:
+            response = _opener(target).open(request, timeout=min(per_read, total))
+        except urllib.error.HTTPError as exc:
+            response = exc
+        with response:
+            raw = response.fp if isinstance(response, urllib.error.HTTPError) else response
+            text = _read_catalogue(raw, deadline)
+            # Redact the complete body before any diagnostic truncation. JSON
+            # escaping must not let a quoted/backslashed key evade replacement.
+            safe_text = text
+            key = cfg.get("api_key")
+            if key:
+                for spelling in (json.dumps(key)[1:-1], key):
+                    safe_text = safe_text.replace(spelling, mask_secret(key))
+            if isinstance(response, urllib.error.HTTPError):
+                code, label = _classify_http_status(response.code)
+                raise BigbrainError(
+                    "%s: HTTP %d from GET %s -- %s" % (label, response.code, target, _short_body(safe_text)),
+                    code, http_status=response.code, body=safe_text,
+                )
             try:
                 return json.loads(text)
             except ValueError:
                 raise BigbrainError(
-                    "GET %s did not return JSON: %s" % (target, _short_body(text)), EXIT_HTTP
+                    "GET %s did not return JSON: %s" % (target, _short_body(safe_text)), EXIT_HTTP
                 )
-    except urllib.error.HTTPError as exc:
-        text = ""
-        try:
-            text = exc.read().decode("utf-8", "replace")
-        except Exception:  # pragma: no cover - defensive
-            pass
-        code, label = _classify_http_status(exc.code)
-        raise BigbrainError(
-            "%s: HTTP %d from GET %s -- %s" % (label, exc.code, target, _short_body(text)),
-            code,
-            http_status=exc.code,
-            body=text,
-        )
     except (socket.timeout, TimeoutError):
-        raise BigbrainError("network timeout after %ss calling %s" % (per_read, target), EXIT_NETWORK)
+        raise BigbrainError("network timeout calling %s (read limit %ss, total budget %ss)"
+                            % (target, per_read, total), EXIT_NETWORK) from None
     except urllib.error.URLError as exc:
         raise BigbrainError(
             "network error calling %s: %s" % (target, getattr(exc, "reason", exc)), EXIT_NETWORK
         )
     except OSError as exc:
         raise BigbrainError("network error calling %s: %s" % (target, exc), EXIT_NETWORK)
+    except http.client.HTTPException:
+        raise BigbrainError("incomplete model catalogue from %s" % target, EXIT_NETWORK) from None
 
 
 def model_ids(body):

@@ -103,6 +103,8 @@ expect_absent() {
 start_mock() {
   # start_mock <tag> [extra args...] -> prints base url
   local tag="$1"; shift
+  local scheme=http
+  case "$tag" in setup*) scheme=https; set -- --tls-cert "$WORK/tls/cert.pem" --tls-key "$WORK/tls/key.pem" "$@";; esac
   local pf="$WORK/port-$tag"
   rm -f "$pf"
   "$PY" "$MOCK" --port 0 --port-file "$pf" --quiet "$@" >"$WORK/mock-$tag.out" 2>&1 &
@@ -119,7 +121,7 @@ start_mock() {
     cat "$WORK/mock-$tag.out" >&2
     return 1
   fi
-  echo "http://127.0.0.1:$port"
+  echo "$scheme://127.0.0.1:$port"
 }
 
 # Snapshot every AGENTS.md-shaped file under the temp tree, with hashes.
@@ -1155,6 +1157,7 @@ INST_BEFORE="$(sha256sum "$INST_CODEX/AGENTS.md" | cut -d' ' -f1)"
 out="$(HOME="$INST_HOME" CODEX_HOME="$INST_CODEX" bash "$ROOT/install.sh" </dev/null 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "install: local install -> exit 0"
 else bad "install: local install -> exit 0" "rc=$rc :: $out"; fi
+expect_contains "install: Codex setup guidance uses the local browser form" "bigbrain_cli.py setup --web" "$out"
 if [ -e "$INST_CODEX/skills/bigbrain/SKILL.md" ]; then ok "install: skill lands in CODEX_HOME/skills"
 else bad "install: skill lands in CODEX_HOME/skills" "$(ls -la "$INST_CODEX/skills" 2>&1 | head -3)"; fi
 if [ -e "$INST_HOME/.agents/skills/bigbrain" ]; then ok "install: symlink in ~/.agents/skills"
@@ -1178,6 +1181,11 @@ if [ -e "$INST2_CODEX/skills/bigbrain/SKILL.md" ]; then ok "install: downloaded 
 else bad "install: downloaded skill is usable" "$(ls "$INST2_CODEX/skills" 2>&1)"; fi
 if [ ! -e "$INST2_CODEX/skills/bigbrain/tests" ]; then ok "install: tests/ excluded from the install"
 else bad "install: tests/ excluded from the install"; fi
+if [ -f "$INST2_CODEX/skills/bigbrain/scripts/bigbrain/setup_ui/index.html" ] \
+  && [ -f "$INST2_CODEX/skills/bigbrain/scripts/bigbrain/setup_ui/setup.js" ] \
+  && [ -f "$INST2_CODEX/skills/bigbrain/scripts/bigbrain/setup_ui/setup.css" ]; then
+  ok "install: copied skill includes all local configuration form assets"
+else bad "install: copied skill includes all local configuration form assets"; fi
 
 # The installed skill runs the full loop.
 INST_SESSION="$WORK/inst-session"
@@ -1265,7 +1273,7 @@ else bad "package: mock_rounds.json has the milestone schema, done, lessons and 
 
 # Stdlib only. Relative imports (`from .x import y`) are intra-package and are
 # allowed; anything else must be on the stdlib allowlist.
-ALLOWED='argparse|json|os|re|socket|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass'
+ALLOWED='argparse|json|os|re|socket|ssl|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|hmac|secrets|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass'
 UNEXPECTED="$(grep -rnE '^[[:space:]]*(import|from)[[:space:]]+' "$SCRIPTS" --include='*.py' \
   | grep -vE ':[0-9]+:[[:space:]]*from[[:space:]]+\.' \
   | grep -vE '(import|from)[[:space:]]+('"$ALLOWED"')([[:space:].]|$)' || true)"
@@ -1366,6 +1374,9 @@ echo
 # 17b. Setup wizard (bigbrain_cli.py setup / scripts/setup.py)
 # --------------------------------------------------------------------------
 echo "-- setup wizard --"
+"$PY" "$ROOT/tests/tls_fixture.py" "$WORK/tls" || exit 1
+export SSL_CERT_FILE="$WORK/tls/cert.pem"
+run_expect_exit "setup: catalogue and Codex JSON regression tests" 0 "$PY" -m unittest discover -s "$ROOT/tests" -p "test_setup*.py"
 SETUP_PY="$SCRIPTS/setup.py"
 SETUP_KEY="sk-setup-test-key-9876"     # what the setup mocks accept; must never be printed
 SETUP_MASK="****9876"
@@ -1624,12 +1635,12 @@ case("setup validate: model not found", w.validate(u404m, key, "no-such-model", 
      "model not found")
 case("setup validate: 404 without a model -> endpoint not found", w.validate(u404p, key, "m", 5),
      False, "endpoint not found")
-case("setup validate: unreachable -> network error", w.validate("http://127.0.0.1:9", key, "m", 3),
+case("setup validate: unreachable -> network error", w.validate("https://127.0.0.1:9", key, "m", 3),
      False, "network error")
 case("setup validate: non-Messages body -> explained", w.validate(uhtml, key, "m", 5), False,
      "not as an Anthropic Messages API")
 case("setup validate: malformed URL -> explained", w.validate("not-a-url", key, "m", 5), False,
-     "http://")
+     "HTTPS")
 print("DONE")
 PYEOF
 
@@ -1702,8 +1713,8 @@ if printf '%s' "$out" | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["
 then ok "precedence: env BIGBRAIN_MODEL beats config.json"
 else bad "precedence: env BIGBRAIN_MODEL beats config.json" "$out"; fi
 
-out="$(sb_env BIGBRAIN_BASE_URL=http://127.0.0.1:9 "$PY" "$CHECK" --no-call --json 2>&1)"
-if printf '%s' "$out" | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["base_url"]=="http://127.0.0.1:9"' 2>/dev/null
+out="$(sb_env BIGBRAIN_BASE_URL=https://127.0.0.1:9 "$PY" "$CHECK" --no-call --json 2>&1)"
+if printf '%s' "$out" | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["base_url"]=="https://127.0.0.1:9"' 2>/dev/null
 then ok "precedence: env BIGBRAIN_BASE_URL beats config.json"
 else bad "precedence: env BIGBRAIN_BASE_URL beats config.json" "$out"; fi
 
@@ -1735,7 +1746,7 @@ expect_contains "setup: is a bigbrain_cli.py subcommand" "--timeout" "$out"
 
 # -- piped (non-tty) wizard ----------------------------------------------------
 new_sandbox
-out="$(printf '3\n%s/v1\n%s\n\n' "$SETUP_BASE" "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+out="$(printf '3\n%s/v1\n%s\n1\n' "$SETUP_BASE" "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && [ -f "$SB_CONFIG" ]; then ok "setup (piped): guided answers -> validated and saved"
 else bad "setup (piped): guided answers -> validated and saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
 expect_contains "setup (piped): says it found nothing" "No existing configuration found" "$out"
@@ -1747,26 +1758,28 @@ then ok "setup (piped): config.json holds exactly what was entered"
 else bad "setup (piped): config.json holds exactly what was entered"; fi
 
 new_sandbox
-out="$(printf '3\n%s\nwrong-key-0000000000\n\na\n' "$SETUP_BASE" | sb_env "$PY" "$SETUP_PY" --timeout 5 2>&1)"; rc=$?
+out="$(printf '3\n%s\nwrong-key-0000000000\na\n' "$SETUP_BASE" | sb_env "$PY" "$SETUP_PY" --timeout 5 2>&1)"; rc=$?
 if [ "$rc" -eq 1 ] && [ ! -e "$SB_CONFIG" ]; then ok "setup (piped): failed validation + abort -> exit 1, nothing saved"
 else bad "setup (piped): failed validation + abort -> exit 1, nothing saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
-expect_contains "setup (piped): explains a 401" "authentication failed (HTTP 401)" "$out"
-expect_contains "setup (piped): offers retry / edit / save anyway / abort" "[r]etry, [e]dit settings, [s]ave anyway, or [a]bort" "$out"
+expect_contains "setup (piped): explains a 401" "HTTP 401" "$out"
+expect_contains "setup (piped): offers retry / edit / abort" "[r]etry, [e]dit settings, or [a]bort" "$out"
+expect_absent "setup (piped): cannot save a failed validation" "save anyway" "$out"
+expect_absent "setup (piped): wrong key blocks model selection" "Model (number" "$out"
 
 new_sandbox
-out="$(printf '3\n%s\n%s\nno-such-model\n' "$SETUP_404M" "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+out="$(printf '3\n%s\n%s\n1\n' "$SETUP_404M" "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
 expect_contains "setup (piped): explains a missing model" "model not found" "$out"
 if [ "$rc" -eq 1 ] && [ ! -e "$SB_CONFIG" ]; then ok "setup (piped): input running out -> exit 1, nothing saved"
 else bad "setup (piped): input running out -> exit 1, nothing saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 300)"; fi
 
 new_sandbox
-out="$(printf '3\nhttp://127.0.0.1:9\n%s\n\nr\ns\n' "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 3 2>&1)"; rc=$?
-expect_contains "setup (piped): explains a network error" "network error: could not reach 127.0.0.1:9" "$out"
-if [ "$rc" -eq 0 ] && [ -f "$SB_CONFIG" ]; then ok "setup (piped): retry, then save anyway -> saved"
-else bad "setup (piped): retry, then save anyway -> saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 300)"; fi
+out="$(printf '3\nhttps://127.0.0.1:9\n%s\nr\na\n' "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 3 2>&1)"; rc=$?
+expect_contains "setup (piped): explains a network error" "network error calling https://127.0.0.1:9" "$out"
+if [ "$rc" -eq 1 ] && [ ! -e "$SB_CONFIG" ]; then ok "setup (piped): retry, then abort -> not saved"
+else bad "setup (piped): retry, then abort -> not saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 300)"; fi
 
 new_sandbox
-out="$(printf 'n\n2\n%s\n\na\n' "$SETUP_KEY" | sb_env BIGBRAIN_API_KEY="$SETUP_KEY" BIGBRAIN_BASE_URL="$SETUP_BASE" "$PY" "$CLI" setup --timeout 3 2>&1)"
+out="$(printf 'n\n3\nhttps://127.0.0.1:9\n%s\na\n' "$SETUP_KEY" | sb_env BIGBRAIN_API_KEY="$SETUP_KEY" BIGBRAIN_BASE_URL="$SETUP_BASE" "$PY" "$CLI" setup --timeout 3 2>&1)"
 expect_contains "setup (piped): declining the detected config falls through to prompts" "Provider:" "$out"
 expect_contains "setup (piped): OpenRouter preset offered" "openrouter.ai/api" "$out"
 expect_absent "setup (piped): detected key is masked" "$SETUP_KEY" "$out"
@@ -1775,7 +1788,7 @@ else bad "setup (piped): abort after decline writes nothing"; fi
 
 # -- pty end-to-end ------------------------------------------------------------
 new_sandbox
-steps="$("$PY" -c 'import json,sys; print(json.dumps([["Choose", "3\n"], ["Base URL", sys.argv[1] + "\n"], ["API key", sys.argv[2] + "\n"], ["Model", "\n"]]))' "$SETUP_BASE" "$SETUP_KEY")"
+steps="$("$PY" -c 'import json,sys; print(json.dumps([["Choose", "3\n"], ["Base URL", sys.argv[1] + "\n"], ["API key", sys.argv[2] + "\n"], ["Model (number or exact id)", "1\n"]]))' "$SETUP_BASE" "$SETUP_KEY")"
 out="$(sb_env "$PY" "$PTY_DRIVER" "$steps" 60 "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "setup (pty): no config -> prompts -> validate -> exit 0"
 else bad "setup (pty): no config -> prompts -> validate -> exit 0" "rc=$rc :: $(printf '%s' "$out" | tail -c 500)"; fi
@@ -1791,7 +1804,7 @@ run_expect_exit "setup (pty): the saved config passes check_config" 0 sb_env "$P
 
 new_sandbox
 out="$(sb_env ANTHROPIC_BASE_URL="$SETUP_BASE" ANTHROPIC_AUTH_TOKEN="$SETUP_KEY" \
-  "$PY" "$PTY_DRIVER" '[["Use this?", "\n"]]' 60 "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+  "$PY" "$PTY_DRIVER" '[["Use this?", "\n"], ["Model (number or exact id)", "1\n"]]' 60 "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "setup (pty): ANTHROPIC_* env -> detected, accepted, exit 0"
 else bad "setup (pty): ANTHROPIC_* env -> detected, accepted, exit 0" "rc=$rc :: $(printf '%s' "$out" | tail -c 500)"; fi
 expect_contains "setup (pty): shows the detected source" "environment (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN)" "$out"
@@ -1829,7 +1842,7 @@ mkdir -p "$SB/codex"
 printf '# codex agents\n' > "$SB/codex/AGENTS.md"
 SB_AGENTS_BEFORE="$(sha256sum "$SB/codex/AGENTS.md" | cut -d' ' -f1)"
 out="$(sb_env CODEX_HOME="$SB/codex" ANTHROPIC_BASE_URL="$SETUP_BASE" ANTHROPIC_API_KEY="$SETUP_KEY" \
-  "$PY" "$PTY_DRIVER" '[["Configure now? [Y/n]", "\n"], ["Use this?", "y\n"]]' 60 \
+  "$PY" "$PTY_DRIVER" '[["Configure now? [Y/n]", "\n"], ["Use this?", "y\n"], ["Model (number or exact id)", "1\n"]]' 60 \
   bash "$ROOT/install.sh" 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && [ -f "$SB_CONFIG" ]; then ok "install (pty): 'Y' runs the wizard and saves"
 else bad "install (pty): 'Y' runs the wizard and saves" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
