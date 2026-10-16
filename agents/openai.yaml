@@ -1,0 +1,34 @@
+interface:
+  display_name: "Dualmind"
+  short_description: "Escalate complex coding tasks to an Opus advisor that plans in milestones, reviews, and keeps pushing until the acceptance criteria are met."
+  long_description: |
+    Codex executes; the advisor directs. DualMind scores the task, and
+    escalates when the score crosses a configurable threshold -- large
+    features, multi-file changes, refactors across module boundaries,
+    ambiguous requirements, migrations, security or concurrency work, or a
+    task that has already failed twice.
+
+    On escalation the advisor returns the global acceptance criteria and a set
+    of milestones, each with its own steps and criteria. The executor works one
+    milestone at a time and reports it for review. The loop cannot end on
+    status=done alone: every acceptance criterion must be marked met, or the
+    run continues. When the executor is stuck it hands over the failure and
+    gets a different approach rather than a restatement.
+
+    When the loop ends -- done, blocked, or out of rounds -- DualMind runs a
+    retrospective, saves the lessons to a user-level store that is injected
+    into future advisor requests, and writes a report with the token counts,
+    an estimate of the run's cost, and the estimated saving versus sending
+    everything to the premium model.
+
+    DualMind never creates or modifies an AGENTS.md or any global Codex/Claude
+    configuration file; lessons apply only while the skill is active.
+
+    Requires DUALMIND_BASE_URL and DUALMIND_API_KEY; run
+    scripts/check_config.py first and refuse to escalate until it passes.
+  default_prompt: "Start with `lessons list` for prior guidance, then run `score`; escalate with `start` when it says escalate, and follow the milestone loop until DONE."
+  icon: null
+  category: "developer-tools"
+
+policy:
+  allow_implicit_invocation: true

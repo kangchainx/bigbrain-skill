@@ -1,0 +1,23 @@
+# Session transcripts are workspace state: they contain task text, model replies
+# and file context. They are never committed and never installed.
+.dualmind/
+
+# The experience store belongs at user level (${DUALMIND_HOME:-$HOME/.dualmind}).
+# It is ignored here as a safety net, so that a misconfigured store cannot be
+# committed from inside the skill directory. DualMind refuses to use a store in
+# this location anyway -- see references/experience.md.
+experience/
+lessons.jsonl
+lessons.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*~
