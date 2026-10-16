@@ -19,7 +19,8 @@ CLI="$SCRIPTS/bigbrain_cli.py"
 MOCK="$SCRIPTS/mock_server.py"
 
 PY="${PYTHON:-python3}"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/bigbrain-tests.XXXXXX")"
+TEST_TMP_ROOT="${TMPDIR:-/tmp}"
+WORK="$(mktemp -d "${TEST_TMP_ROOT%/}/bigbrain-tests.XXXXXX")"
 API_KEY="test-key-abcdef123456"
 PORT_FILE="$WORK/port"
 
@@ -1857,7 +1858,7 @@ else
   bad "isolation: the real ~/.bigbrain/config.json was not touched"
 fi
 
-if [ "$(count_protected)" = "1" ]; then
+if [ "$(count_protected)" -eq 1 ]; then
   ok "isolation: exactly the one pre-existing protected file exists under temp HOME"
 else
   bad "isolation: exactly the one pre-existing protected file exists under temp HOME" \
