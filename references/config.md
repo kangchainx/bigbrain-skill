@@ -20,7 +20,31 @@ Authorization: Bearer <key>
 | `BIGBRAIN_API_KEY` | The key, sent as both `x-api-key` and `Authorization: Bearer` |
 
 Without both, the skill refuses to run. `scripts/check_config.py` reports exactly which one is
-missing or malformed and refuses to continue until it is fixed.
+missing or malformed, prints the setup command below, and refuses to continue until it is fixed.
+
+## Setup wizard
+
+```bash
+python3 scripts/bigbrain_cli.py setup     # same as: python3 scripts/setup.py
+```
+
+1. **Detect** (read-only), in this order: `BIGBRAIN_*` env, `ANTHROPIC_BASE_URL` +
+   `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` env, an existing `config.json`, and the `env`
+   block of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`). Each one found
+   is shown with its source and a masked key, then `Use this? [Y/n]`.
+2. **Ask** when nothing is found or everything is declined: provider (Anthropic
+   `https://api.anthropic.com`, OpenRouter `https://openrouter.ai/api`, or a custom URL — a
+   trailing `/v1` is dropped), API key (hidden), model (default per provider, editable).
+3. **Validate** with one `max_tokens=16` streamed request (20s timeout, `--timeout` to
+   change). Failures are explained — `401/403` rejected key, `404` model vs. endpoint not
+   found, network errors, a non-Messages response — and you choose retry, edit, save anyway
+   or abort. Nothing is saved on abort.
+4. **Save** `base_url`, `api_key` and `model` into `config.json` (other keys in the file are
+   kept), mode `600`, directory `700`.
+
+It writes nothing else: no AGENTS.md, no agent configuration. `install.sh` offers to run it
+on an interactive terminal (`--no-setup` skips that); non-interactive installs print the
+command instead.
 
 ## Optional (defaults shown)
 
@@ -136,8 +160,9 @@ package or inside the current git repository.
 4. Built-in defaults
 
 Environment always wins. Any `BIGBRAIN_*` variable can also be set as a JSON key in
-`config.json`; `threshold` and `weights` are commonly set there, since `BIGBRAIN_WEIGHTS`
-is awkward to quote in a shell.
+`config.json`, either under its full name (`BIGBRAIN_MODEL`) or its short lowercase form
+(`model`); the full name wins if both are present. `threshold` and `weights` are commonly
+set there, since `BIGBRAIN_WEIGHTS` is awkward to quote in a shell.
 
 ```json
 {
@@ -192,4 +217,4 @@ is not the model you configured, and finding out later wastes a whole run.
 Exit codes: `0` OK · `2` missing/malformed config · `3` network/DNS/timeout · `4` auth
 (401/403) · `5` model or endpoint not found (404) · `6` other HTTP error or unusable response.
 
-The key is never printed in full — at most `first4...last2`.
+The key is never printed in full — only masked as `****` plus its last 4 characters.

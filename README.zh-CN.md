@@ -43,6 +43,22 @@ curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/inst
 
 ## 配置
 
+最简单的方式是运行配置向导。在终端中执行 `install.sh` 时会询问 `Configure now? [Y/n]`；
+之后也可以随时运行：
+
+```bash
+python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup    # 或 scripts/setup.py
+```
+
+向导会先（只读地）查找已有配置：`BIGBRAIN_*` 与 `ANTHROPIC_*` 环境变量、`~/.bigbrain/config.json`、
+`~/.claude/settings.json` 中的 `env` 段，找到后显示脱敏摘要并询问 `Use this? [Y/n]`；否则依次询问
+服务商（Anthropic 官方、OpenRouter 或自定义 URL）、API Key（输入不回显）和模型。随后发送一次极小的
+真实请求进行验证，失败时说明原因（Key 被拒、URL 错误、模型不存在、网络问题），并可选择重试 / 修改 /
+仍然保存 / 放弃。向导只写入 `~/.bigbrain/config.json`（权限 600，目录 700）。未配置时运行
+`check_config.py` 或 CLI，会打印上述完整命令。
+
+也可以直接设置环境变量（环境变量优先于 `config.json`）：
+
 ```bash
 export BIGBRAIN_BASE_URL=https://api.anthropic.com   # 不要带 /v1
 export BIGBRAIN_API_KEY=sk-...
@@ -57,6 +73,7 @@ python3 scripts/check_config.py                       # 输出 OK 后才会升�
 - **绝不创建或修改 `AGENTS.md`、`CLAUDE.md` 或全局 Codex/Claude 配置**，由代码中的守卫强制执行，
   并有测试覆盖。
 - **经验只保存在本地** `~/.bigbrain/experience/`；放在 skill 目录或 git 仓库内会被拒绝。
+- **API Key 从不明文输出**，只显示为 `****` 加末 4 位。
 - 仅依赖 Python 3 标准库，无需 pip 安装。
 
 ## 节省示例（来自一次真实运行）

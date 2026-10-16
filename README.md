@@ -104,6 +104,7 @@ cd bigbrain-skill
 ./install.sh                       # ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain + ~/.agents/skills link
 ./install.sh --claude              # also install into ~/.claude/skills/bigbrain
 ./install.sh --copy                # copy instead of symlink
+./install.sh --no-setup            # don't offer the setup wizard afterwards
 ./install.sh --uninstall           # remove the skill, keep your lessons
 ./install.sh --uninstall --purge   # also remove ~/.bigbrain
 ```
@@ -121,6 +122,24 @@ is copied into place.
 ## Configure
 
 Any Anthropic-compatible Messages API works: Anthropic itself or a relay.
+
+The easiest way is the setup wizard. `install.sh` offers to run it when you install from a
+terminal (`Configure now? [Y/n]`); run it any time with:
+
+```bash
+python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup    # or: scripts/setup.py
+```
+
+It looks for an existing configuration first — `BIGBRAIN_*` and `ANTHROPIC_*` environment
+variables, `~/.bigbrain/config.json`, and the `env` block of `~/.claude/settings.json` (only
+read, never modified) — and asks `Use this? [Y/n]`. Otherwise it asks for the provider
+(Anthropic, OpenRouter, or a custom URL), the API key (hidden input) and the model. It then
+sends one tiny request and explains a failure (rejected key, wrong URL, unknown model,
+network) before offering retry / edit / save anyway / abort. The only file it writes is
+`~/.bigbrain/config.json`, mode `600` in a `700` directory. If Bigbrain runs unconfigured,
+`check_config.py` and the CLI print this exact command.
+
+Or set the environment yourself:
 
 ```bash
 export BIGBRAIN_BASE_URL=https://api.anthropic.com   # no trailing /v1
@@ -143,9 +162,11 @@ endpoint serves.
 | `BIGBRAIN_EXECUTOR_PRICE_IN` / `_OUT` | `1.25` / `10` | Executor price, for the savings estimate |
 | `BIGBRAIN_HOME` | `~/.bigbrain` | User-level config and lesson store |
 
-Settings can also live in `~/.bigbrain/config.json` or `~/.config/bigbrain/config.env`; the
-environment wins. `ANTHROPIC_*` variables are ignored unless you opt in with
-`BIGBRAIN_USE_ANTHROPIC_ENV=1`. Full reference: [`references/config.md`](references/config.md).
+Settings can also live in `~/.bigbrain/config.json` (what the wizard writes) or
+`~/.config/bigbrain/config.env`; environment variables always win over both. `ANTHROPIC_*`
+variables are ignored at run time unless you opt in with `BIGBRAIN_USE_ANTHROPIC_ENV=1` (the
+wizard can copy them into `config.json` if you accept them). Full reference:
+[`references/config.md`](references/config.md).
 
 ## Safety guarantees
 
@@ -156,9 +177,10 @@ environment wins. `ANTHROPIC_*` variables are ignored unless you opt in with
 - **Lessons stay local** in `${BIGBRAIN_HOME:-~/.bigbrain}/experience/`. A store inside the skill
   package or inside a git repository is refused, so lessons can't be committed by accident.
   Details: [`references/experience.md`](references/experience.md).
-- **The installer only places the skill.** `--uninstall` keeps your lessons; only `--purge`
-  removes them.
-- **Your key is never printed in full** (at most the first 4 and last 2 characters).
+- **The installer only places the skill** (and, if you say yes on a terminal, runs the setup
+  wizard, which writes only `~/.bigbrain/config.json`). `--uninstall` keeps your lessons; only
+  `--purge` removes them.
+- **Your key is never printed** — only masked as `****` plus its last 4 characters.
 - **Session transcripts stay in your workspace** under `.bigbrain/`, which is git-ignored.
 
 ## Savings: an example from one real run

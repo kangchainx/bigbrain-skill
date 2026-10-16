@@ -15,8 +15,10 @@ package makes, so a future feature that tries to persist lessons into an
 instruction file fails loudly instead of succeeding quietly.
 
 There is deliberately no read helper here either: the rule is that no code path
-creates, reads-for-write, or modifies these files.  Nothing in bigbrain needs
-their contents, so nothing is exposed to read them.
+creates, reads-for-write, or modifies these files.  The one read is the setup
+wizard's auto-detection, which parses the ``env`` block of
+``~/.claude/settings.json`` read-only (see ``setup_wizard.detect``) and never
+writes it back.
 """
 
 from __future__ import annotations

@@ -36,6 +36,7 @@ from .config import (
     config_problems,
     load_config,
     mask_secret,
+    setup_command,
 )
 from .io import eprint
 
@@ -146,8 +147,9 @@ def main(argv=None):
             "stage": "config",
             "exit_code": EXIT_CONFIG,
             "error": "; ".join(problems),
-            "hint": "set BIGBRAIN_BASE_URL and BIGBRAIN_API_KEY, or write them to "
-                    "~/.bigbrain/config.json (see references/config.md)",
+            "hint": "run the setup wizard: %s  (or set BIGBRAIN_BASE_URL and "
+                    "BIGBRAIN_API_KEY; see references/config.md)" % setup_command(),
+            "setup_command": setup_command(),
             "base_url": base_url,
             "model": model,
             "api_key": mask_secret(cfg["api_key"]),

@@ -23,6 +23,22 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/bigbrain-tests.XXXXXX")"
 API_KEY="test-key-abcdef123456"
 PORT_FILE="$WORK/port"
 
+# The real home is remembered only to prove, at the end, that nothing touched it.
+REAL_HOME="${HOME:-}"
+REAL_CONFIG="$REAL_HOME/.bigbrain/config.json"
+real_config_state() {  # existence, mtime and hash -- never the contents
+  "$PY" - "$REAL_CONFIG" <<'PYEOF'
+import hashlib, os, sys
+path = sys.argv[1]
+if not os.path.exists(path):
+    print("absent")
+else:
+    with open(path, "rb") as handle:
+        print(os.stat(path).st_mtime_ns, hashlib.sha256(handle.read()).hexdigest())
+PYEOF
+}
+REAL_CONFIG_BEFORE="$(real_config_state)"
+
 # Every invocation runs against a temp HOME so the user-level lesson store and
 # any config land in the sandbox, never in the real home directory.
 export HOME="$WORK/home"
@@ -122,6 +138,10 @@ count_protected() {
 
 export BIGBRAIN_USE_ANTHROPIC_ENV=0
 unset BIGBRAIN_BASE_URL BIGBRAIN_API_KEY BIGBRAIN_MODEL 2>/dev/null || true
+# The setup wizard auto-detects these, so an ambient value (say, from the shell
+# running the suite) must not leak in.
+unset ANTHROPIC_BASE_URL ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CONFIG_DIR \
+  BIGBRAIN_CONFIG_FILE 2>/dev/null || true
 
 echo "== bigbrain test suite =="
 echo "python: $($PY --version 2>&1)"
@@ -192,7 +212,7 @@ case "$out" in
   *"$API_KEY"*) bad "check_config: never prints the full API key" "key leaked in --json output" ;;
   *) ok "check_config: never prints the full API key" ;;
 esac
-expect_contains "check_config: masks the key" "test...56" "$out"
+expect_contains "check_config: masks the key as ****last4" "****3456" "$out"
 
 run_expect_exit "check_config: wrong key -> exit 4" 4 \
   env BIGBRAIN_BASE_URL="$BASE_URL" BIGBRAIN_API_KEY="wrong-key" "$PY" "$CHECK"
@@ -1131,7 +1151,7 @@ rm -rf "$WORK/inst"; mkdir -p "$INST_HOME" "$INST_CODEX"
 printf '# codex agents\n' > "$INST_CODEX/AGENTS.md"
 INST_BEFORE="$(sha256sum "$INST_CODEX/AGENTS.md" | cut -d' ' -f1)"
 
-out="$(HOME="$INST_HOME" CODEX_HOME="$INST_CODEX" bash "$ROOT/install.sh" 2>&1)"; rc=$?
+out="$(HOME="$INST_HOME" CODEX_HOME="$INST_CODEX" bash "$ROOT/install.sh" </dev/null 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "install: local install -> exit 0"
 else bad "install: local install -> exit 0" "rc=$rc :: $out"; fi
 if [ -e "$INST_CODEX/skills/bigbrain/SKILL.md" ]; then ok "install: skill lands in CODEX_HOME/skills"
@@ -1179,7 +1199,7 @@ fi
 # Uninstall keeps the experience store.
 mkdir -p "$INST2_HOME/.bigbrain/experience"
 printf '{"id":"x","text":"keep me"}\n' > "$INST2_HOME/.bigbrain/experience/lessons.jsonl"
-out="$(HOME="$INST2_HOME" CODEX_HOME="$INST2_CODEX" bash "$ROOT/install.sh" --uninstall 2>&1)"; rc=$?
+out="$(HOME="$INST2_HOME" CODEX_HOME="$INST2_CODEX" bash "$ROOT/install.sh" --uninstall </dev/null 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "install: --uninstall -> exit 0"
 else bad "install: --uninstall -> exit 0" "rc=$rc :: $out"; fi
 if [ ! -e "$INST2_CODEX/skills/bigbrain" ]; then ok "install: --uninstall removes the skill"
@@ -1189,7 +1209,7 @@ if [ -f "$INST2_HOME/.bigbrain/experience/lessons.jsonl" ]; then
 else
   bad "install: --uninstall keeps the experience store"; fi
 
-out="$(HOME="$INST_HOME" CODEX_HOME="$INST_CODEX" bash "$ROOT/install.sh" --uninstall --purge 2>&1)"
+out="$(HOME="$INST_HOME" CODEX_HOME="$INST_CODEX" bash "$ROOT/install.sh" --uninstall --purge </dev/null 2>&1)"
 if [ ! -e "$INST_HOME/.bigbrain" ]; then ok "install: --purge removes the store"
 else bad "install: --purge removes the store"; fi
 
@@ -1244,7 +1264,7 @@ else bad "package: mock_rounds.json has the milestone schema, done, lessons and 
 
 # Stdlib only. Relative imports (`from .x import y`) are intra-package and are
 # allowed; anything else must be on the stdlib allowlist.
-ALLOWED='argparse|json|os|re|socket|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|difflib|copy|__future__|bigbrain|bigbrain_common|check_config'
+ALLOWED='argparse|json|os|re|socket|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass'
 UNEXPECTED="$(grep -rnE '^[[:space:]]*(import|from)[[:space:]]+' "$SCRIPTS" --include='*.py' \
   | grep -vE ':[0-9]+:[[:space:]]*from[[:space:]]+\.' \
   | grep -vE '(import|from)[[:space:]]+('"$ALLOWED"')([[:space:].]|$)' || true)"
@@ -1342,6 +1362,485 @@ else bad "report.json: includes cache token fields"; fi
 echo
 
 # --------------------------------------------------------------------------
+# 17b. Setup wizard (bigbrain_cli.py setup / scripts/setup.py)
+# --------------------------------------------------------------------------
+echo "-- setup wizard --"
+SETUP_PY="$SCRIPTS/setup.py"
+SETUP_KEY="sk-setup-test-key-9876"     # what the setup mocks accept; must never be printed
+SETUP_MASK="****9876"
+SETUP_BASE="$(start_mock setup --api-key "$SETUP_KEY")" || exit 1
+SETUP_401="$(start_mock setup401 --mode 401 --api-key "$SETUP_KEY")" || exit 1
+SETUP_404M="$(start_mock setup404m --mode 404model --api-key "$SETUP_KEY")" || exit 1
+SETUP_404P="$(start_mock setup404p --mode 404path --api-key "$SETUP_KEY")" || exit 1
+SETUP_HTML="$(start_mock setuphtml --mode html --api-key "$SETUP_KEY")" || exit 1
+
+# Every wizard run gets a fresh sandbox HOME (and BIGBRAIN_HOME inside it), so
+# a config.json written by one case can never satisfy another.
+SB_N=0
+new_sandbox() {
+  SB_N=$((SB_N + 1))
+  SB="$WORK/setup-sb-$SB_N"
+  SB_HOME="$SB/home"
+  mkdir -p "$SB_HOME"
+  SB_CONFIG="$SB_HOME/.bigbrain/config.json"
+}
+sb_env() {  # sb_env CMD... -> run with the sandbox HOME and nothing else configured
+  # Earlier sections export BIGBRAIN_* for the loop tests; the wizard would
+  # (rightly) detect them, so the sandbox starts from a clean slate.
+  env -u BIGBRAIN_BASE_URL -u BIGBRAIN_API_KEY -u BIGBRAIN_MODEL -u BIGBRAIN_MAX_ROUNDS \
+    HOME="$SB_HOME" BIGBRAIN_HOME="$SB_HOME/.bigbrain" "$@"
+}
+file_mode() { "$PY" -c 'import os,stat,sys; print(oct(stat.S_IMODE(os.stat(sys.argv[1]).st_mode)))' "$1" 2>/dev/null; }
+
+# py_cases: run a Python block (stdin) that prints "PASS name" / "FAIL name: why"
+# lines, and must end with "DONE" so a crash half-way is itself a failure.
+py_cases() {
+  local label="$1"; shift
+  local out line done=0
+  out="$(BB_SCRIPTS="$SCRIPTS" "$PY" - "$@" 2>&1)"
+  while IFS= read -r line; do
+    case "$line" in
+      "PASS "*) ok "${line#PASS }" ;;
+      "FAIL "*) bad "${line#FAIL }" ;;
+      DONE) done=1 ;;
+    esac
+  done <<< "$out"
+  [ "$done" -eq 1 ] || bad "$label: python block completed" "$(printf '%s' "$out" | tail -c 600)"
+}
+
+# Pty driver: runs a command on a real pseudo-terminal, answers prompts, and
+# always reaps the child (SIGKILL on timeout) so nothing is left running.
+PTY_DRIVER="$WORK/pty_drive.py"
+cat > "$PTY_DRIVER" <<'PYEOF'
+"""pty_drive.py STEPS_JSON TIMEOUT CMD... -- expect/send over a pseudo-terminal.
+
+STEPS_JSON is a list of [expected_substring, text_to_send].  The transcript goes
+to stdout; the exit status is the child's (124 on timeout, 125 on a missed step).
+"""
+import json, os, pty, select, signal, sys, time
+
+steps = json.loads(sys.argv[1])
+deadline = time.time() + float(sys.argv[2])
+argv = sys.argv[3:]
+pid, fd = pty.fork()
+if pid == 0:
+    try:
+        os.execvp(argv[0], argv)
+    finally:
+        os._exit(127)
+
+buf = b""
+eof = False
+
+
+def pump(wait):
+    global buf, eof
+    ready, _, _ = select.select([fd], [], [], wait)
+    if not ready:
+        return
+    try:
+        data = os.read(fd, 4096)
+    except OSError:  # EIO: the child closed the terminal
+        data = b""
+    if not data:
+        eof = True
+    buf += data
+
+
+def finish(code):
+    sys.stdout.write(buf.decode("utf-8", "replace"))
+    sys.stdout.flush()
+    sys.exit(code)
+
+
+def kill():
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    os.waitpid(pid, 0)
+
+
+pos = 0
+for expected, send in steps:
+    needle = expected.encode()
+    while needle not in buf[pos:]:
+        if eof or time.time() > deadline:
+            kill()
+            sys.stdout.write("\n[pty_drive] never saw %r\n" % expected)
+            finish(125 if eof else 124)
+        pump(0.1)
+    pos = buf.index(needle, pos) + len(needle)
+    time.sleep(0.05)
+    os.write(fd, send.encode())
+
+while not eof and time.time() < deadline:
+    pump(0.1)
+if not eof:
+    kill()
+    finish(124)
+_, status = os.waitpid(pid, 0)
+os.close(fd)
+finish(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 128 + os.WTERMSIG(status))
+PYEOF
+
+# -- detection, read-only, from every source ---------------------------------
+new_sandbox
+py_cases "setup detect" "$SB" <<'PYEOF'
+import hashlib, json, os, sys
+sys.path.insert(0, os.environ["BB_SCRIPTS"])
+from bigbrain import setup_wizard as w
+
+sb = sys.argv[1]
+home = os.path.join(sb, "home")
+bb = os.path.join(home, ".bigbrain")
+KEY = "sk-detect-abcdef-1111"
+
+
+def case(name, cond, why=""):
+    print(("PASS %s" % name) if cond else ("FAIL %s: %s" % (name, why)))
+
+
+base_env = {"HOME": home, "BIGBRAIN_HOME": bb}
+found = w.detect(dict(base_env), home)
+case("setup detect: nothing configured -> no candidates", found == [], found)
+
+c = w.detect(dict(base_env, BIGBRAIN_BASE_URL="https://relay.example.com/", BIGBRAIN_API_KEY=KEY,
+                  BIGBRAIN_MODEL="m-env"), home)
+case("setup detect: BIGBRAIN_* env", len(c) == 1 and c[0]["base_url"] == "https://relay.example.com"
+     and c[0]["api_key"] == KEY and c[0]["model"] == "m-env" and "BIGBRAIN_" in c[0]["source"], c)
+
+c = w.detect(dict(base_env, ANTHROPIC_BASE_URL="https://proxy.example.com",
+                  ANTHROPIC_AUTH_TOKEN=KEY, ANTHROPIC_API_KEY="other-key-000000"), home)
+case("setup detect: ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (token preferred)",
+     len(c) == 1 and c[0]["api_key"] == KEY and c[0]["base_url"] == "https://proxy.example.com"
+     and "ANTHROPIC_AUTH_TOKEN" in c[0]["source"], c)
+
+c = w.detect(dict(base_env, ANTHROPIC_API_KEY=KEY), home)
+case("setup detect: ANTHROPIC_API_KEY alone -> Anthropic official URL",
+     len(c) == 1 and c[0]["base_url"] == "https://api.anthropic.com" and c[0]["notes"], c)
+
+os.makedirs(bb)
+cfg_path = os.path.join(bb, "config.json")
+with open(cfg_path, "w") as f:
+    json.dump({"base_url": "https://json.example.com", "api_key": KEY, "model": "m-json"}, f)
+c = w.detect(dict(base_env), home)
+case("setup detect: existing config.json (short keys)",
+     len(c) == 1 and c[0]["model"] == "m-json" and c[0]["source"].endswith("config.json"), c)
+with open(cfg_path, "w") as f:
+    json.dump({"BIGBRAIN_BASE_URL": "https://json2.example.com", "BIGBRAIN_API_KEY": KEY}, f)
+c = w.detect(dict(base_env), home)
+case("setup detect: existing config.json (BIGBRAIN_* keys)",
+     len(c) == 1 and c[0]["base_url"] == "https://json2.example.com", c)
+os.remove(cfg_path)
+
+claude = os.path.join(home, ".claude")
+os.makedirs(claude)
+settings = os.path.join(claude, "settings.json")
+with open(settings, "w") as f:
+    json.dump({"model": "opus", "env": {"ANTHROPIC_BASE_URL": "https://cc.example.com",
+                                        "ANTHROPIC_AUTH_TOKEN": KEY}}, f)
+
+
+def fingerprint(path):
+    with open(path, "rb") as handle:
+        return os.stat(path).st_mtime_ns, hashlib.sha256(handle.read()).hexdigest()
+
+
+before = fingerprint(settings)
+c = w.detect(dict(base_env), home)
+case("setup detect: ~/.claude/settings.json env block",
+     len(c) == 1 and c[0]["base_url"] == "https://cc.example.com" and "settings.json" in c[0]["source"], c)
+case("setup detect: settings.json is only read, never modified", fingerprint(settings) == before)
+case("setup detect: detection creates no config.json", not os.path.exists(cfg_path))
+
+alt = os.path.join(sb, "cc-alt")
+os.makedirs(alt)
+with open(os.path.join(alt, "settings.json"), "w") as f:
+    json.dump({"env": {"ANTHROPIC_API_KEY": KEY}}, f)
+c = w.detect(dict(base_env, CLAUDE_CONFIG_DIR=alt), home)
+case("setup detect: CLAUDE_CONFIG_DIR is honoured", len(c) == 1 and alt in c[0]["source"], c)
+
+c = w.detect(dict(base_env, BIGBRAIN_API_KEY=KEY, BIGBRAIN_BASE_URL="https://a.example.com",
+                  ANTHROPIC_AUTH_TOKEN="ant-key-22222222", ANTHROPIC_BASE_URL="https://b.example.com"), home)
+case("setup detect: order is BIGBRAIN env > ANTHROPIC env > claude settings",
+     [x["base_url"] for x in c] == ["https://a.example.com", "https://b.example.com", "https://cc.example.com"],
+     [x["source"] for x in c])
+
+c = w.detect(dict(base_env, ANTHROPIC_BASE_URL="https://cc.example.com", ANTHROPIC_AUTH_TOKEN=KEY), home)
+case("setup detect: identical candidates are shown once", len(c) == 1, c)
+print("DONE")
+PYEOF
+
+# -- masking -----------------------------------------------------------------
+py_cases "setup masking" <<'PYEOF'
+import os, sys
+sys.path.insert(0, os.environ["BB_SCRIPTS"])
+from bigbrain.config import mask_secret
+from bigbrain import setup_wizard as w
+
+
+def case(name, cond, why=""):
+    print(("PASS %s" % name) if cond else ("FAIL %s: %s" % (name, why)))
+
+
+case("mask: ****last4", mask_secret("sk-ant-api03-abcdefgh1234") == "****1234",
+     mask_secret("sk-ant-api03-abcdefgh1234"))
+case("mask: short secret reveals nothing", mask_secret("abc12345") == "****", mask_secret("abc12345"))
+case("mask: empty -> (unset)", mask_secret("") == "(unset)")
+
+KEY = "sk-summary-secret-5555"
+lines = []
+io = w.Prompter(ask=lambda p: "", secret=lambda p: "", out=lines.append)
+w.show_summary(io, {"base_url": "https://x.example.com", "api_key": KEY, "model": "m"}, "Found:")
+text = "\n".join(lines)
+case("setup: summary shows ****last4", "****5555" in text, text)
+case("setup: summary never shows the key", KEY not in text and KEY[:8] not in text, text)
+print("DONE")
+PYEOF
+
+# -- validation against the mock --------------------------------------------
+py_cases "setup validate" "$SETUP_BASE" "$SETUP_401" "$SETUP_404M" "$SETUP_404P" "$SETUP_HTML" "$SETUP_KEY" <<'PYEOF'
+import os, sys
+sys.path.insert(0, os.environ["BB_SCRIPTS"])
+from bigbrain import setup_wizard as w
+
+ok_url, u401, u404m, u404p, uhtml, key = sys.argv[1:7]
+
+
+def case(name, result, ok, needle):
+    good, message = result
+    cond = good is ok and needle.lower() in message.lower() and key not in message
+    print(("PASS %s" % name) if cond else ("FAIL %s: %r" % (name, result)))
+
+
+case("setup validate: success", w.validate(ok_url, key, "claude-opus-5-5", 5), True, "answered")
+case("setup validate: wrong key -> 401 message", w.validate(ok_url, "wrong-key-000000000", "m", 5),
+     False, "authentication failed (HTTP 401)")
+case("setup validate: 401 mode -> auth message", w.validate(u401, key, "m", 5), False,
+     "rejected the API key")
+case("setup validate: model not found", w.validate(u404m, key, "no-such-model", 5), False,
+     "model not found")
+case("setup validate: 404 without a model -> endpoint not found", w.validate(u404p, key, "m", 5),
+     False, "endpoint not found")
+case("setup validate: unreachable -> network error", w.validate("http://127.0.0.1:9", key, "m", 3),
+     False, "network error")
+case("setup validate: non-Messages body -> explained", w.validate(uhtml, key, "m", 5), False,
+     "not as an Anthropic Messages API")
+case("setup validate: malformed URL -> explained", w.validate("not-a-url", key, "m", 5), False,
+     "http://")
+print("DONE")
+PYEOF
+
+# -- saving: 600 / 700, merge, guards ---------------------------------------
+new_sandbox
+py_cases "setup save" "$SB_HOME" <<'PYEOF'
+import json, os, stat, sys
+sys.path.insert(0, os.environ["BB_SCRIPTS"])
+from bigbrain import setup_wizard as w
+from bigbrain.config import BigbrainError, load_config
+
+home = sys.argv[1]
+bb = os.path.join(home, ".bigbrain")
+env = {"HOME": home, "BIGBRAIN_HOME": bb}
+
+
+def case(name, cond, why=""):
+    print(("PASS %s" % name) if cond else ("FAIL %s: %s" % (name, why)))
+
+
+def mode(path):
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+
+vals = {"base_url": "https://s.example.com", "api_key": "sk-save-key-7777", "model": "m1"}
+path = w.save_config(vals, env)
+case("setup save: config.json is mode 600", mode(path) == 0o600, oct(mode(path)))
+case("setup save: ~/.bigbrain is mode 700", mode(bb) == 0o700, oct(mode(bb)))
+with open(path) as f:
+    saved = json.load(f)
+case("setup save: writes base_url/api_key/model", saved == vals, sorted(saved))
+case("setup save: no temp files left behind", os.listdir(bb) == ["config.json"], os.listdir(bb))
+
+with open(path, "w") as f:
+    json.dump({"threshold": 0.4, "BIGBRAIN_MODEL": "stale", "api_key": "old"}, f)
+os.chmod(path, 0o644)
+w.save_config(vals, env)
+with open(path) as f:
+    data = json.load(f)
+case("setup save: keeps unrelated keys", data.get("threshold") == 0.4, sorted(data))
+case("setup save: drops stale BIGBRAIN_* duplicates", "BIGBRAIN_MODEL" not in data, sorted(data))
+case("setup save: re-tightens an existing file to 600", mode(path) == 0o600, oct(mode(path)))
+cfg = load_config(env=env)
+case("setup save: loader reads the saved file", cfg["base_url"] == vals["base_url"]
+     and cfg["model"] == "m1" and cfg["sources"]["api_key"] == "json", cfg["sources"])
+
+for target in (os.path.join(home, "AGENTS.md"), os.path.join(home, ".claude", "config.json")):
+    label = "setup save: refuses %s" % os.path.relpath(target, home)
+    try:
+        w.save_config(vals, dict(env, BIGBRAIN_CONFIG_FILE=target))
+        case(label, False, "it wrote the file")
+    except BigbrainError:
+        case(label, not os.path.exists(target), "file exists")
+print("DONE")
+PYEOF
+
+# -- precedence: env > config.json, seen through check_config and the advisor --
+new_sandbox
+mkdir -p "$SB_HOME/.bigbrain"
+printf '{"base_url": "%s", "api_key": "%s", "model": "json-model"}\n' "$SETUP_BASE" "$SETUP_KEY" \
+  > "$SB_CONFIG"
+out="$(sb_env "$PY" "$CHECK" --no-call --json 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); assert d["model"]=="json-model" and d["api_key_source"]=="json"' 2>/dev/null
+then ok "precedence: check_config reads config.json"
+else bad "precedence: check_config reads config.json" "rc=$rc :: $out"; fi
+expect_absent "precedence: check_config does not print the key" "$SETUP_KEY" "$out"
+
+out="$(sb_env BIGBRAIN_MODEL=env-model "$PY" "$CHECK" --no-call --json 2>&1)"
+if printf '%s' "$out" | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["model"]=="env-model"' 2>/dev/null
+then ok "precedence: env BIGBRAIN_MODEL beats config.json"
+else bad "precedence: env BIGBRAIN_MODEL beats config.json" "$out"; fi
+
+out="$(sb_env BIGBRAIN_BASE_URL=http://127.0.0.1:9 "$PY" "$CHECK" --no-call --json 2>&1)"
+if printf '%s' "$out" | "$PY" -c 'import json,sys; assert json.load(sys.stdin)["base_url"]=="http://127.0.0.1:9"' 2>/dev/null
+then ok "precedence: env BIGBRAIN_BASE_URL beats config.json"
+else bad "precedence: env BIGBRAIN_BASE_URL beats config.json" "$out"; fi
+
+run_expect_exit "precedence: check_config pings using config.json alone" 0 sb_env "$PY" "$CHECK"
+
+sb_env "$PY" "$ADVISOR" --dry-run start --task "t" --session "$SB/s" >"$SB/dry.out" 2>"$SB/dry.err"; rc=$?
+if [ "$rc" -eq 0 ] && "$PY" -c 'import json,sys; assert json.load(open(sys.argv[1]))["request"]["model"]=="json-model"' "$SB/dry.out" 2>/dev/null
+then ok "precedence: advisor.py runs from config.json alone"
+else bad "precedence: advisor.py runs from config.json alone" "rc=$rc :: $(tail -c 300 "$SB/dry.err")"; fi
+sb_env BIGBRAIN_MODEL=env-model "$PY" "$CLI" --dry-run start --task "t" --session "$SB/s2" >"$SB/dry2.out" 2>/dev/null
+if "$PY" -c 'import json,sys; assert json.load(open(sys.argv[1]))["request"]["model"]=="env-model"' "$SB/dry2.out" 2>/dev/null
+then ok "precedence: advisor honours env over config.json"
+else bad "precedence: advisor honours env over config.json" "$(tail -c 300 "$SB/dry2.out")"; fi
+
+# -- unconfigured runs point at the wizard ----------------------------------
+new_sandbox
+out="$(sb_env "$PY" "$CHECK" --no-call 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "hint: unconfigured check_config -> exit 2"
+else bad "hint: unconfigured check_config -> exit 2" "rc=$rc"; fi
+expect_contains "hint: check_config names the setup command" "scripts/bigbrain_cli.py setup" "$out"
+out="$(sb_env "$PY" "$CHECK" --no-call --json 2>&1)"
+expect_contains "hint: check_config --json carries setup_command" '"setup_command": "python3 ' "$out"
+out="$(sb_env "$PY" "$ADVISOR" start --task t --session "$SB/s" 2>&1)"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "hint: unconfigured advisor -> exit 2"
+else bad "hint: unconfigured advisor -> exit 2" "rc=$rc"; fi
+expect_contains "hint: advisor prints the exact setup command" "python3 $SCRIPTS/bigbrain_cli.py setup" "$out"
+out="$(sb_env "$PY" "$CLI" setup --help 2>&1)"
+expect_contains "setup: is a bigbrain_cli.py subcommand" "--timeout" "$out"
+
+# -- piped (non-tty) wizard ----------------------------------------------------
+new_sandbox
+out="$(printf '3\n%s/v1\n%s\n\n' "$SETUP_BASE" "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$SB_CONFIG" ]; then ok "setup (piped): guided answers -> validated and saved"
+else bad "setup (piped): guided answers -> validated and saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
+expect_contains "setup (piped): says it found nothing" "No existing configuration found" "$out"
+expect_contains "setup (piped): strips a trailing /v1" "dropped the trailing /v1" "$out"
+expect_absent "setup (piped): never prints the key" "$SETUP_KEY" "$out"
+if "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d=={"base_url":sys.argv[2],"api_key":sys.argv[3],"model":"claude-opus-5-5"}' \
+     "$SB_CONFIG" "$SETUP_BASE" "$SETUP_KEY" 2>/dev/null
+then ok "setup (piped): config.json holds exactly what was entered"
+else bad "setup (piped): config.json holds exactly what was entered"; fi
+
+new_sandbox
+out="$(printf '3\n%s\nwrong-key-0000000000\n\na\n' "$SETUP_BASE" | sb_env "$PY" "$SETUP_PY" --timeout 5 2>&1)"; rc=$?
+if [ "$rc" -eq 1 ] && [ ! -e "$SB_CONFIG" ]; then ok "setup (piped): failed validation + abort -> exit 1, nothing saved"
+else bad "setup (piped): failed validation + abort -> exit 1, nothing saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
+expect_contains "setup (piped): explains a 401" "authentication failed (HTTP 401)" "$out"
+expect_contains "setup (piped): offers retry / edit / save anyway / abort" "[r]etry, [e]dit settings, [s]ave anyway, or [a]bort" "$out"
+
+new_sandbox
+out="$(printf '3\n%s\n%s\nno-such-model\n' "$SETUP_404M" "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+expect_contains "setup (piped): explains a missing model" "model not found" "$out"
+if [ "$rc" -eq 1 ] && [ ! -e "$SB_CONFIG" ]; then ok "setup (piped): input running out -> exit 1, nothing saved"
+else bad "setup (piped): input running out -> exit 1, nothing saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 300)"; fi
+
+new_sandbox
+out="$(printf '3\nhttp://127.0.0.1:9\n%s\n\nr\ns\n' "$SETUP_KEY" | sb_env "$PY" "$CLI" setup --timeout 3 2>&1)"; rc=$?
+expect_contains "setup (piped): explains a network error" "network error: could not reach 127.0.0.1:9" "$out"
+if [ "$rc" -eq 0 ] && [ -f "$SB_CONFIG" ]; then ok "setup (piped): retry, then save anyway -> saved"
+else bad "setup (piped): retry, then save anyway -> saved" "rc=$rc :: $(printf '%s' "$out" | tail -c 300)"; fi
+
+new_sandbox
+out="$(printf 'n\n2\n%s\n\na\n' "$SETUP_KEY" | sb_env BIGBRAIN_API_KEY="$SETUP_KEY" BIGBRAIN_BASE_URL="$SETUP_BASE" "$PY" "$CLI" setup --timeout 3 2>&1)"
+expect_contains "setup (piped): declining the detected config falls through to prompts" "Provider:" "$out"
+expect_contains "setup (piped): OpenRouter preset offered" "openrouter.ai/api" "$out"
+expect_absent "setup (piped): detected key is masked" "$SETUP_KEY" "$out"
+if [ ! -e "$SB_CONFIG" ]; then ok "setup (piped): abort after decline writes nothing"
+else bad "setup (piped): abort after decline writes nothing"; fi
+
+# -- pty end-to-end ------------------------------------------------------------
+new_sandbox
+steps="$("$PY" -c 'import json,sys; print(json.dumps([["Choose", "3\n"], ["Base URL", sys.argv[1] + "\n"], ["API key", sys.argv[2] + "\n"], ["Model", "\n"]]))' "$SETUP_BASE" "$SETUP_KEY")"
+out="$(sb_env "$PY" "$PTY_DRIVER" "$steps" 60 "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "setup (pty): no config -> prompts -> validate -> exit 0"
+else bad "setup (pty): no config -> prompts -> validate -> exit 0" "rc=$rc :: $(printf '%s' "$out" | tail -c 500)"; fi
+expect_contains "setup (pty): validation hit the mock" "OK: 127.0.0.1" "$out"
+expect_contains "setup (pty): reports the save" "(mode 600)" "$out"
+expect_absent "setup (pty): typed key is not echoed or printed" "$SETUP_KEY" "$out"
+if [ -f "$SB_CONFIG" ] && [ "$(file_mode "$SB_CONFIG")" = "0o600" ]
+then ok "setup (pty): config.json saved with mode 600"
+else bad "setup (pty): config.json saved with mode 600" "$(ls -la "$SB_HOME/.bigbrain" 2>&1)"; fi
+if [ "$(file_mode "$SB_HOME/.bigbrain")" = "0o700" ]; then ok "setup (pty): ~/.bigbrain created with mode 700"
+else bad "setup (pty): ~/.bigbrain created with mode 700" "$(file_mode "$SB_HOME/.bigbrain")"; fi
+run_expect_exit "setup (pty): the saved config passes check_config" 0 sb_env "$PY" "$CHECK"
+
+new_sandbox
+out="$(sb_env ANTHROPIC_BASE_URL="$SETUP_BASE" ANTHROPIC_AUTH_TOKEN="$SETUP_KEY" \
+  "$PY" "$PTY_DRIVER" '[["Use this?", "\n"]]' 60 "$PY" "$CLI" setup --timeout 5 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "setup (pty): ANTHROPIC_* env -> detected, accepted, exit 0"
+else bad "setup (pty): ANTHROPIC_* env -> detected, accepted, exit 0" "rc=$rc :: $(printf '%s' "$out" | tail -c 500)"; fi
+expect_contains "setup (pty): shows the detected source" "environment (ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN)" "$out"
+expect_contains "setup (pty): shows the masked key" "$SETUP_MASK" "$out"
+expect_absent "setup (pty): detected key never printed" "$SETUP_KEY" "$out"
+expect_absent "setup (pty): accepted config asks no further questions" "Provider:" "$out"
+if "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["base_url"]==sys.argv[2] and d["api_key"]==sys.argv[3]' \
+     "$SB_CONFIG" "$SETUP_BASE" "$SETUP_KEY" 2>/dev/null
+then ok "setup (pty): ANTHROPIC_* values saved to config.json"
+else bad "setup (pty): ANTHROPIC_* values saved to config.json"; fi
+# The loader itself still ignores ANTHROPIC_* without the opt-in, so this run
+# is driven by the config.json the wizard just wrote.
+run_expect_exit "setup (pty): saved config works without the ANTHROPIC_* env" 0 sb_env "$PY" "$CHECK"
+
+# -- install.sh: offer the wizard only on a terminal -------------------------
+new_sandbox
+out="$(sb_env CODEX_HOME="$SB/codex" bash "$ROOT/install.sh" </dev/null 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "install: non-interactive -> exit 0"
+else bad "install: non-interactive -> exit 0" "rc=$rc :: $out"; fi
+expect_absent "install: non-interactive does not prompt" "Configure now?" "$out"
+expect_contains "install: non-interactive prints the exact setup command" \
+  "python3 $SB/codex/skills/bigbrain/scripts/bigbrain_cli.py setup" "$out"
+if [ ! -e "$SB_CONFIG" ]; then ok "install: non-interactive writes no config"
+else bad "install: non-interactive writes no config"; fi
+
+new_sandbox
+out="$(sb_env CODEX_HOME="$SB/codex" "$PY" "$PTY_DRIVER" '[["Configure now? [Y/n]", "n\n"]]' 60 \
+  bash "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$SB_CONFIG" ]; then ok "install (pty): 'n' skips setup, writes no config"
+else bad "install (pty): 'n' skips setup, writes no config" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
+expect_contains "install (pty): 'n' still prints the setup hint" "bigbrain_cli.py setup" "$out"
+
+new_sandbox
+mkdir -p "$SB/codex"
+printf '# codex agents\n' > "$SB/codex/AGENTS.md"
+SB_AGENTS_BEFORE="$(sha256sum "$SB/codex/AGENTS.md" | cut -d' ' -f1)"
+out="$(sb_env CODEX_HOME="$SB/codex" ANTHROPIC_BASE_URL="$SETUP_BASE" ANTHROPIC_API_KEY="$SETUP_KEY" \
+  "$PY" "$PTY_DRIVER" '[["Configure now? [Y/n]", "\n"], ["Use this?", "y\n"]]' 60 \
+  bash "$ROOT/install.sh" 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$SB_CONFIG" ]; then ok "install (pty): 'Y' runs the wizard and saves"
+else bad "install (pty): 'Y' runs the wizard and saves" "rc=$rc :: $(printf '%s' "$out" | tail -c 400)"; fi
+expect_contains "install (pty): reports configured" "Configured." "$out"
+expect_absent "install (pty): key never printed" "$SETUP_KEY" "$out"
+if [ "$(sha256sum "$SB/codex/AGENTS.md" | cut -d' ' -f1)" = "$SB_AGENTS_BEFORE" ] \
+   && [ "$(ls -A "$SB_HOME/.bigbrain" 2>/dev/null)" = "config.json" ]
+then ok "install (pty): only config.json written; AGENTS.md untouched"
+else bad "install (pty): only config.json written; AGENTS.md untouched" "$(ls -A "$SB_HOME/.bigbrain" 2>&1)"; fi
+echo
+
+# --------------------------------------------------------------------------
 # 18. Final: nothing leaked outside the temp tree
 # --------------------------------------------------------------------------
 echo "-- isolation --"
@@ -1350,6 +1849,12 @@ if [ -z "$(find "$ROOT" -name 'lessons.jsonl' -o -name '.bigbrain' -type d 2>/de
 else
   bad "isolation: no session or lesson data inside the skill directory" \
       "$(find "$ROOT" -name 'lessons.jsonl' -o -name '.bigbrain' -type d 2>/dev/null | head -3)"
+fi
+
+if [ "$(real_config_state)" = "$REAL_CONFIG_BEFORE" ]; then
+  ok "isolation: the real ~/.bigbrain/config.json was not touched"
+else
+  bad "isolation: the real ~/.bigbrain/config.json was not touched"
 fi
 
 if [ "$(count_protected)" = "1" ]; then

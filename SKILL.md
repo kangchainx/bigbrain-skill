@@ -32,6 +32,18 @@ python3 <skill>/scripts/check_config.py
 ```
 
 - Exit `0` and prints `OK` → proceed.
+- Exit `2` (not configured) → the checker prints the exact setup command. Tell the user to
+  run it themselves in a terminal — it is interactive and asks for their API key:
+
+  ```bash
+  python3 <skill>/scripts/bigbrain_cli.py setup
+  ```
+
+  The wizard detects an existing configuration (`BIGBRAIN_*` / `ANTHROPIC_*` env,
+  `~/.bigbrain/config.json`, the `env` block of `~/.claude/settings.json` — read-only), or
+  asks for provider, key and model; validates with one tiny request; and writes only
+  `~/.bigbrain/config.json` (mode 600). Environment variables still override that file.
+  Do not run the wizard on the user's behalf and never type a key into it yourself.
 - Any other exit code → **do not escalate**. Tell the user which variable is wrong (the
   checker names it) and what to set. Never invent, guess or echo an API key, and never
   continue with a partially configured advisor.
@@ -144,7 +156,8 @@ are for testing only — never present a mock run as a real advisor review.
 - `references/triggers.md` — escalation scoring: signals, weights, threshold
 - `references/experience.md` — the lessons store, and what it deliberately never touches
 - `references/advisor-system-prompt.md` — the advisor's system prompt (sent each round)
-- `scripts/bigbrain_cli.py` — the CLI: `score`, `start`, `report`, `stuck`, `finish`, `status`, `lessons`
+- `scripts/bigbrain_cli.py` — the CLI: `score`, `start`, `report`, `stuck`, `finish`, `status`, `lessons`, `setup`
+- `scripts/setup.py` — the setup wizard on its own (same as `bigbrain_cli.py setup`)
 - `scripts/check_config.py`, `scripts/advisor.py` — kept working; thin wrappers over the CLI
 - `scripts/bigbrain/` — the package: config, client, schema, scoring, session, loop,
   experience, agents_md, report, status, cli

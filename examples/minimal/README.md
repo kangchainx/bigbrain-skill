@@ -30,7 +30,7 @@ python3 scripts/check_config.py
 # OK
 #   base url : https://api.example.com
 #   model    : claude-opus-5-5
-#   api key  : sk-r...9f
+#   api key  : ****a19f
 #   latency  : 412 ms
 #   reply    : pong
 ```

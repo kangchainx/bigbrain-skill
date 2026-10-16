@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -152,14 +153,15 @@ class AdvisorParseError(BigbrainError):
 def mask_secret(value):
     """Return a diagnostic-safe rendering of a secret.
 
-    Never returns more than the first 4 and last 2 characters.
+    Never returns more than the last 4 characters (``****abcd``).  Short values
+    reveal nothing at all, not even their length.
     """
     if not value:
         return "(unset)"
     text = str(value)
-    if len(text) <= 8:
-        return "*" * len(text)
-    return "%s...%s" % (text[:4], text[-2:])
+    if len(text) < 12:
+        return "****"
+    return "****%s" % text[-4:]
 
 
 # --------------------------------------------------------------------------
@@ -326,6 +328,33 @@ def json_config_path(env=None):
     return bigbrain_home_dir(env) / "config.json"
 
 
+def json_keys(name):
+    """The keys ``name`` may appear under in config.json: as-is, then short form."""
+    if name.startswith("BIGBRAIN_"):
+        return (name, name[len("BIGBRAIN_"):].lower())
+    return (name,)
+
+
+def setup_command(argv0=None):
+    """The exact command that runs the setup wizard for *this* install.
+
+    Built from the script actually being run when that is one of ours, so the
+    hint shows ``~/.codex/skills/bigbrain/scripts/...`` rather than the symlink
+    target of a checkout.
+    """
+    argv0 = sys.argv[0] if argv0 is None else argv0
+    scripts = None
+    if argv0 and Path(argv0).name in ("bigbrain_cli.py", "check_config.py", "advisor.py", "setup.py"):
+        scripts = Path(os.path.abspath(argv0)).parent
+    if scripts is None or not (scripts / "bigbrain_cli.py").is_file():
+        scripts = skill_root() / "scripts"
+    path = str(scripts / "bigbrain_cli.py")
+    home = os.path.expanduser("~")
+    if home not in ("", "/") and path.startswith(home + os.sep):
+        path = "~" + path[len(home):]
+    return "python3 %s setup" % path
+
+
 # --------------------------------------------------------------------------
 # Main loader
 # --------------------------------------------------------------------------
@@ -350,12 +379,17 @@ def load_config(env=None, config_file=None, json_file=None):
     sources["json_file_present"] = json_path.is_file()
 
     def raw(name, fallback=None):
-        """Environment > JSON config > env-file > default."""
+        """Environment > JSON config > env-file > default.
+
+        ``config.json`` accepts both the variable name (``BIGBRAIN_MODEL``) and
+        its short lowercase form (``model``), which is what ``setup`` writes.
+        """
         if env.get(name):
             return env[name], "env"
-        if name in json_vals and json_vals[name] not in (None, ""):
-            value = json_vals[name]
-            return (json.dumps(value) if isinstance(value, (dict, list)) else str(value)), "json"
+        for key in json_keys(name):
+            if key in json_vals and json_vals[key] not in (None, ""):
+                value = json_vals[key]
+                return (json.dumps(value) if isinstance(value, (dict, list)) else str(value)), "json"
         if file_vals.get(name):
             return file_vals[name], "file"
         return fallback, "default"

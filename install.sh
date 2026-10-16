@@ -9,6 +9,7 @@
 #   ./install.sh --uninstall     -> remove the skill (keeps the experience store)
 #   ./install.sh --uninstall --purge  -> also remove ~/.bigbrain experience data
 #   ./install.sh --dir PATH      -> any custom destination
+#   ./install.sh --no-setup      -> skip the "Configure now?" prompt
 #
 # With no checkout (the curl|bash one-liner):
 #   curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/install.sh \
@@ -16,6 +17,8 @@
 #
 # The installer never touches an AGENTS.md, and never writes to any agent
 # instruction or configuration file.  It places the skill, and nothing else.
+# On an interactive terminal it offers to run the setup wizard, which writes
+# only ~/.bigbrain/config.json.
 #
 # Local only: nothing is pushed or published.  The tarball download is the one
 # network fetch, and it only happens when there is no local checkout.
@@ -27,6 +30,7 @@ MODE="symlink"
 DEST=""
 UNINSTALL=0
 PURGE=0
+SETUP=1
 # When the script arrives on stdin (curl | bash) there is no BASH_SOURCE at all,
 # which under `set -u` is an unbound variable rather than an empty one.
 SCRIPT_DIR=""
@@ -35,7 +39,7 @@ if [ -n "${BASH_SOURCE[0]:-}" ]; then
 fi
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -48,6 +52,7 @@ while [ $# -gt 0 ]; do
     --symlink)   MODE="symlink"; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     --purge)     PURGE=1; shift ;;
+    --no-setup)  SETUP=0; shift ;;
     -h|--help)   usage 0 ;;
     *) echo "install.sh: unknown option $1" >&2; usage 1 ;;
   esac
@@ -212,9 +217,49 @@ if [ "$CLAUDE" -eq 1 ] && [ "$PRIMARY_DIR" != "$CLAUDE_DIR" ]; then
   install_into "$CLAUDE_DIR"
 fi
 
+# The installed copy, for the commands printed below.
+if [ -n "$DEST" ]; then
+  SKILL_PATH="$DEST/bigbrain"
+else
+  SKILL_PATH="$PRIMARY_DIR/bigbrain"
+fi
+SETUP_CMD="python3 $SKILL_PATH/scripts/bigbrain_cli.py setup"
+CHECK_CMD="python3 $SKILL_PATH/scripts/check_config.py"
+
 echo
-echo "Installed. Next:"
-echo "  1. export BIGBRAIN_BASE_URL=... BIGBRAIN_API_KEY=..."
-echo "  2. python3 $PRIMARY_DIR/bigbrain/scripts/check_config.py   # must print OK before use"
+echo "Installed."
+
+# Offer the setup wizard, but only to a person: a piped or scripted install
+# (curl | bash, CI) must never block on a prompt.
+configured=0
+if [ "$SETUP" -eq 1 ] && [ -t 0 ] && [ -t 1 ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "install.sh: python3 not found; skipping setup."
+  else
+    printf 'Configure now? [Y/n] '
+    answer=""
+    read -r answer || answer="n"
+    case "$answer" in
+      ""|y|Y|yes|YES|Yes)
+        if python3 "$SKILL_PATH/scripts/bigbrain_cli.py" setup; then
+          configured=1
+        else
+          echo "install.sh: setup did not complete; run it again any time (below)."
+        fi
+        ;;
+    esac
+  fi
+fi
+
+echo
+if [ "$configured" -eq 1 ]; then
+  echo "Configured. Check it any time with:"
+  echo "  $CHECK_CMD"
+else
+  echo "Next: configure the advisor endpoint with the setup wizard:"
+  echo "  $SETUP_CMD"
+  echo "(or export BIGBRAIN_BASE_URL and BIGBRAIN_API_KEY), then:"
+  echo "  $CHECK_CMD   # must print OK before use"
+fi
 echo
 echo "Nothing was written to AGENTS.md or to any agent configuration file."

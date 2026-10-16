@@ -36,6 +36,7 @@ from .config import (
     load_config,
     mask_secret,
     parse_weights,
+    setup_command,
 )
 from .io import Progress, eprint, read_context_files
 from .session import (
@@ -78,6 +79,8 @@ def config_or_fail(cfg):
     if problems:
         for problem in problems:
             eprint("%s: configuration error: %s" % (PROG, problem))
+        eprint("%s: to configure Bigbrain, run the setup wizard:" % PROG)
+        eprint("%s:   %s" % (PROG, setup_command()))
         eprint("%s: see references/config.md; run scripts/check_config.py to diagnose" % PROG)
         return False
     return True
@@ -797,6 +800,12 @@ def build_parser():
     stat.add_argument("--json", action="store_true")
     stat.add_argument("--quiet", action="store_true")
 
+    # -- setup ---------------------------------------------------------
+    setup = sub.add_parser("setup", help="interactive wizard: detect, ask, validate, write ~/.bigbrain/config.json")
+    setup.add_argument("--timeout", type=int, default=None,
+                       help="seconds to wait for the validation request (default 20)")
+    setup.add_argument("--quiet", action="store_true")
+
     # -- lessons -------------------------------------------------------
     les = sub.add_parser("lessons", help="the user-level experience store (item 4)")
     les.add_argument("--json", action="store_true")
@@ -878,6 +887,15 @@ def _merge_global_flags(args):
 def main(argv=None):
     args = _merge_global_flags(build_parser().parse_args(argv))
     progress = make_progress(args)
+
+    if args.command == "setup":
+        # The wizard is how a missing configuration gets fixed, so it must run
+        # before (and regardless of) the configuration check below.
+        from . import setup_wizard
+
+        return setup_wizard.run_wizard(
+            timeout=args.timeout or setup_wizard.VALIDATE_TIMEOUT
+        )
 
     if args.command == "score":
         # score is a local calculation, so a missing endpoint is not a problem

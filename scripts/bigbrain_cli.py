@@ -11,6 +11,7 @@ importable and hands over.  All logic lives in ``bigbrain/cli.py``.
     finish   write report.md/report.json (retrospective runs automatically)
     status   print session state, or audit for AGENTS.md-shaped files
     lessons  the user-level experience store: list / add / prune / export
+    setup    interactive wizard that writes ~/.bigbrain/config.json
 
 Exit codes are the loop control; run with --help for the table.
 """

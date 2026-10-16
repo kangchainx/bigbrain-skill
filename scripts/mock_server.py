@@ -14,7 +14,7 @@ client transports from a single script.
 
 Usage:
   mock_server.py [--host 127.0.0.1] [--port 0] [--api-key test-key]
-                 [--mode ok|401|404model|500|garbage|prose|524|524once|incomplete]
+                 [--mode ok|401|404model|404path|500|garbage|prose|524|524once|incomplete]
                  [--fail-count N] [--script NAME_OR_FILE] [--port-file FILE]
                  [--requests-out FILE] [--quiet]
 
@@ -38,6 +38,7 @@ reliably drives the max-rounds path.
   524once    the first --fail-count requests answer 524, then the script runs
   524once    (default --fail-count 1) -- proves retry-then-success
   incomplete the stream ends without message_stop -- proves the client notices
+  404path    a plain 404 that names no model -- a wrong base URL, not a wrong model
 """
 
 from __future__ import annotations
@@ -379,6 +380,10 @@ class Handler(BaseHTTPRequestHandler):
             self._error(404, "not_found_error",
                         "model: %s not found (mode=404model)" % body.get("model"))
             return
+        if state.mode == "404path":
+            # A wrong base URL: the route does not exist, and nothing mentions a model.
+            self._error(404, "not_found_error", "Not Found (mode=404path)")
+            return
         if state.mode == "500":
             self._error(500, "api_error", "internal server error (mode=500)")
             return
@@ -480,7 +485,7 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--api-key", default=DEFAULT_API_KEY)
     parser.add_argument("--mode", default="ok",
-                        choices=["ok", "401", "404model", "500", "garbage", "prose", "html",
+                        choices=["ok", "401", "404model", "404path", "500", "garbage", "prose", "html",
                                  "524", "524once", "incomplete"])
     parser.add_argument("--fail-count", type=int, default=None,
                         help="with --mode 524once: how many requests answer 524 first")
