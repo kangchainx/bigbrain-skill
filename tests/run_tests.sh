@@ -34,8 +34,12 @@ PASS=0
 FAIL=0
 FAILED_NAMES=()
 SERVER_PIDS=()
+# start_mock runs inside $(...), so its SERVER_PIDS+= is lost with the subshell;
+# the pid file is what cleanup can actually see.
+SERVER_PID_FILE="$WORK/mock-pids"
 
 cleanup() {
+  [ -f "$SERVER_PID_FILE" ] && while read -r pid; do SERVER_PIDS+=("$pid"); done < "$SERVER_PID_FILE"
   for pid in "${SERVER_PIDS[@]:-}"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null
   done
@@ -87,6 +91,7 @@ start_mock() {
   "$PY" "$MOCK" --port 0 --port-file "$pf" --quiet "$@" >"$WORK/mock-$tag.out" 2>&1 &
   local pid=$!
   SERVER_PIDS+=("$pid")
+  echo "$pid" >> "$SERVER_PID_FILE"
   local port=""
   for _ in $(seq 1 100); do
     if [ -s "$pf" ]; then port="$(cat "$pf")"; break; fi

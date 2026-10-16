@@ -1,40 +1,97 @@
 # Bigbrain
 
-An agent skill that lets Codex hand complex work to an **Opus advisor** and keeps going until
-the work is actually done.
+**Codex drives, Claude co-pilots.** An agent skill that lets Codex do the work and call in an
+Opus advisor only when the task is hard enough to need one — then keeps going, milestone by
+milestone, until the acceptance criteria are actually met.
 
-Codex is the executor. For large features, multi-file changes, refactors across module
-boundaries, ambiguous specs, migrations and other risky work, it escalates to a stronger
-advisor model over an Anthropic-compatible Messages API. The advisor clarifies, plans in
-milestones with acceptance criteria, reviews the executor's real output critically, and pushes
-the task forward instead of stopping to ask the user for every decision. Simple tasks are done
-locally, with no advisor at all.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![tests](https://github.com/kangchainx/bigbrain-skill/actions/workflows/tests.yml/badge.svg)](https://github.com/kangchainx/bigbrain-skill/actions/workflows/tests.yml)
+[![Python 3 · stdlib only](https://img.shields.io/badge/python-3%20%C2%B7%20stdlib%20only-3776AB?logo=python&logoColor=white)](#faq)
+
+English · [简体中文](README.zh-CN.md)
+
+![Bigbrain demo: escalation score, milestone reviews, retrospective and savings report](docs/demo.gif)
+
+<sub>The demo runs the real CLI against the bundled mock server (`scripts/mock_server.py`), so the
+advisor replies are scripted. Re-record it with `vhs docs/demo.tape`.</sub>
+
+## Why
+
+A strong model is most valuable for **judgement**: clarifying a fuzzy spec, choosing an
+approach, splitting work into checkable steps, and spotting a test that proves less than it
+claims. Most of the token volume in a coding session is something else: reading files, writing
+code, running tests.
+
+Bigbrain splits those two jobs. Codex stays the executor and does the bulk of the work. When a
+task scores as complex or risky, it escalates to an advisor model over any Anthropic-compatible
+Messages API. The advisor plans in milestones with acceptance criteria, reviews Codex's real
+output, and keeps pushing the task forward. Simple tasks never leave Codex.
+
+## How it works
+
+```mermaid
+flowchart TD
+    A["Task arrives in Codex"] --> B["Load lessons from ~/.bigbrain"]
+    B --> C{"Escalation score above threshold?"}
+    C -- "no" --> D["Codex does it locally, no advisor call"]
+    C -- "yes" --> E["Advisor: acceptance criteria + milestones"]
+    E --> F["Codex works the current milestone"]
+    F --> G["Report result for review"]
+    G --> H{"Advisor verdict"}
+    H -- "revise" --> F
+    H -- "approve, more milestones" --> F
+    F -- "stuck" --> S["Hand over the failure, get a different approach"]
+    S --> F
+    H -- "done and every criterion met" --> R["Retrospective: lessons saved"]
+    R --> P["report.md: rounds, tokens, cost, savings"]
+```
+
+1. **Score.** `score` turns files changed, ambiguity, consecutive failures, risk tags and an
+   explicit user request into one 0–1 number and compares it to a threshold (default `0.6`).
+2. **Plan.** Round 1 returns global acceptance criteria and a few milestones, each with its own
+   steps and criteria.
+3. **Loop.** Codex works one milestone at a time and reports it. The advisor approves, asks
+   for a revision with specific issues, or rejects.
+4. **Finish.** The loop ends only when the advisor says `done` **and** marks every criterion
+   met. Then a retrospective saves lessons, and a report records what the run cost.
 
 ## Features
 
-- **Computed escalation, not a judgement call.** `score` turns files changed, ambiguity,
-  consecutive failures, risk tags and an explicit user request into a single 0–1 number and
-  compares it to a configurable threshold. Weights and threshold both configurable.
-- **A milestone loop with a real finish line.** Round 1 returns the global acceptance criteria
-  and 3-ish milestones, each with its own steps and criteria. The executor works one milestone
-  at a time and reports it for review. The loop ends only when the advisor returns `done`
-  **and** every acceptance criterion is marked met — a `done` that cannot say which criteria
-  passed keeps looping.
-- **`stuck` re-escalation.** When the executor cannot make progress, it hands over the failure
-  and the attempts already made, and gets a materially different approach instead of a
-  restatement.
-- **Automatic retrospective.** When a session ends — done, blocked, or out of rounds — the
-  advisor is called once more to review the *process* and return lessons. No user input needed.
-- **A lesson store that grows across sessions.** Lessons live in a user-level directory, are
-  injected into every advisor request, and are merged and pruned by confidence × recency.
-  **No code path ever creates or modifies an `AGENTS.md`** — see below.
-- **End-of-run report.** Escalations, rounds, advisor tokens summed from the API's `usage`
-  fields, a cost estimate at configurable prices, and an estimated saving versus sending
-  everything to the premium model. Written to `report.md` + `report.json`.
-- **Visible progress.** Every step prints `[Bigbrain] ...` lines to stderr.
-- **Python 3 standard library only** — no pip installs, no dependencies.
-- **Local only** — no push, no publish. The installer's tarball fetch is the one network call,
-  and only when there is no local checkout.
+- **Computed escalation.** A weighted score against a configurable threshold, not a gut call.
+- **Milestones with a real finish line.** A `done` that cannot say which criteria passed keeps
+  looping.
+- **`stuck` re-escalation.** Hand over the failure and the attempts so far, and get a different
+  approach rather than a restatement.
+- **Automatic retrospective.** When a session ends (done, blocked, or out of rounds), the
+  advisor reviews the process and returns lessons.
+- **Lessons that carry across sessions.** Stored at user level, injected into future advisor
+  requests, merged and pruned by confidence × recency.
+- **Usage and savings report.** Advisor tokens summed from the API's `usage` fields, a cost
+  estimate at configurable prices, and the estimated saving versus sending everything to the
+  premium model. Written to `report.md` and `report.json`.
+- **Visible progress.** Every step prints a `[Bigbrain] ...` line to stderr.
+- **Streaming with retries.** SSE by default so proxies don't time out on long thinking turns;
+  transient errors (429/5xx/524, dropped streams) are retried with backoff.
+- **Python 3 standard library only.** No pip installs, no dependencies.
+
+## How it compares
+
+These are architectural differences, not a ranking. A plain Codex session is simpler and has
+no second model to configure; a Claude-led setup suits people who want Claude in charge of the
+session.
+
+| | Plain Codex | Claude-led, e.g. codexmcp | Bigbrain |
+|---|---|---|---|
+| Who drives the session | Codex | Claude; Codex is called as an MCP tool | Codex |
+| Where the stronger model is used | — (one model) | Claude runs the whole session | Only on escalated tasks: planning and reviews |
+| When the second model is consulted | — | When Claude decides to call the Codex tool | When the escalation score crosses a configurable threshold |
+| What "done" means | The agent's own judgement | The driving agent's judgement | Advisor says `done` **and** every acceptance criterion is marked met |
+| Token / cost report with savings estimate | No savings estimate (one model) | See its docs | Yes, per run |
+| Lessons across sessions | Via your own `AGENTS.md`, if you keep one | See its docs | User-level store in `~/.bigbrain`, never an `AGENTS.md` |
+| Extra requirements | — | An MCP host plus Codex | An Anthropic-compatible API key |
+
+For a sourced comparison with sendbird/cc-plugin-codex, openai/codex-plugin-cc and
+pal-mcp-server, see [`references/comparison-sources.md`](references/comparison-sources.md).
 
 ## Install
 
@@ -44,170 +101,142 @@ With the [skills](https://github.com/vercel-labs/skills) CLI:
 npx skills add kangchainx/bigbrain-skill
 ```
 
-Or from a checkout:
+From a checkout:
 
 ```bash
 git clone https://github.com/kangchainx/bigbrain-skill.git
 cd bigbrain-skill
-./install.sh                          # ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain
-                                      # plus a symlink in ~/.agents/skills/bigbrain
-./install.sh --claude                 # also install into ~/.claude/skills/bigbrain
-./install.sh --copy                   # copy instead of symlink
-./install.sh --uninstall              # remove the skill, keep your lessons
-./install.sh --uninstall --purge      # also remove ~/.bigbrain
+./install.sh                       # ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain + ~/.agents/skills link
+./install.sh --claude              # also install into ~/.claude/skills/bigbrain
+./install.sh --copy                # copy instead of symlink
+./install.sh --uninstall           # remove the skill, keep your lessons
+./install.sh --uninstall --purge   # also remove ~/.bigbrain
 ```
 
-Or with no checkout:
+One-liner, no checkout:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/install.sh \
   | BIGBRAIN_SRC=https://github.com/kangchainx/bigbrain-skill/archive/refs/heads/main.tar.gz bash
 ```
 
-`tests/`, `.bigbrain/` and any lesson store are excluded from every install. `--uninstall`
-keeps the experience store; only `--purge` removes your lessons.
+`tests/`, `docs/`, `.github/`, `.bigbrain/` and any lesson store are left out when the skill
+is copied into place.
 
 ## Configure
 
+Any Anthropic-compatible Messages API works: Anthropic itself or a relay.
+
 ```bash
-export BIGBRAIN_BASE_URL=https://api.example.com   # no trailing /v1
+export BIGBRAIN_BASE_URL=https://api.anthropic.com   # no trailing /v1
 export BIGBRAIN_API_KEY=sk-...
+python3 scripts/check_config.py                       # must print OK before Bigbrain escalates
 ```
 
-Then verify — the skill refuses to escalate until this passes:
+The check is judged, not just received: an endpoint that answers a one-word ping with a long
+paragraph is reported as unusable. `check_config.py --list-models` shows the model ids your
+endpoint serves.
 
-```bash
-python3 scripts/check_config.py     # prints OK, model, base url, latency
-```
+| Variable | Default | Meaning |
+|---|---|---|
+| `BIGBRAIN_MODEL` | `claude-opus-5-5` | Advisor model id (spelling is provider-specific) |
+| `BIGBRAIN_THRESHOLD` | `0.6` | Escalate when the score is above this |
+| `BIGBRAIN_MAX_ROUNDS` | `8` | Round budget per session |
+| `BIGBRAIN_TIMEOUT` | `300` | Per-read socket timeout, seconds |
+| `BIGBRAIN_LESSON_INJECT` | `8` | Lessons injected into each advisor request |
+| `BIGBRAIN_PRICE_IN` / `_OUT` | `15` / `75` | Advisor price, USD per million tokens |
+| `BIGBRAIN_EXECUTOR_PRICE_IN` / `_OUT` | `1.25` / `10` | Executor price, for the savings estimate |
+| `BIGBRAIN_HOME` | `~/.bigbrain` | User-level config and lesson store |
 
-The ping is judged, not just received: an endpoint that answers a one-word `ping` with a long
-paragraph is reported as unusable (exit 6) rather than `OK`.
+Settings can also live in `~/.bigbrain/config.json` or `~/.config/bigbrain/config.env`; the
+environment wins. `ANTHROPIC_*` variables are ignored unless you opt in with
+`BIGBRAIN_USE_ANTHROPIC_ENV=1`. Full reference: [`references/config.md`](references/config.md).
 
-Optionals (all have defaults): `BIGBRAIN_MODEL` = `claude-opus-5-5`, `BIGBRAIN_MAX_ROUNDS` = `8`,
-`BIGBRAIN_THRESHOLD` = `0.6`, `BIGBRAIN_TIMEOUT` = `300`, `BIGBRAIN_LESSON_INJECT` = `8`,
-`BIGBRAIN_PRICE_IN` / `_OUT` = `15` / `75`. Config also reads
-`${BIGBRAIN_HOME:-$HOME/.bigbrain}/config.json` and `~/.config/bigbrain/config.env`;
-environment wins. Full details in [`references/config.md`](references/config.md).
+## Safety guarantees
+
+- **Never touches `AGENTS.md`, `CLAUDE.md`, or global Codex/Claude config.** Every write goes
+  through a guard ([`scripts/bigbrain/agents_md.py`](scripts/bigbrain/agents_md.py)) that refuses
+  those paths, and the test suite asserts no `AGENTS.md` is created or modified anywhere under a
+  temporary home after a full install/run/uninstall cycle.
+- **Lessons stay local** in `${BIGBRAIN_HOME:-~/.bigbrain}/experience/`. A store inside the skill
+  package or inside a git repository is refused, so lessons can't be committed by accident.
+  Details: [`references/experience.md`](references/experience.md).
+- **The installer only places the skill.** `--uninstall` keeps your lessons; only `--purge`
+  removes them.
+- **Your key is never printed in full** (at most the first 4 and last 2 characters).
+- **Session transcripts stay in your workspace** under `.bigbrain/`, which is git-ignored.
+
+## Savings: an example from one real run
+
+> Opus advisor cost **$0.85**, **2 rounds**, an estimated **~58.6% saved** compared with
+> sending the whole run's token volume to the premium model.
+
+This is one run, not a benchmark. The saving depends on the task, your prices and how much work
+the executor does between reviews. The executor's own token volume never reaches the advisor
+API, so the report estimates it and says so. Treat the figure as a sizing estimate, not an
+invoice.
 
 ## Usage
 
+The skill instructions in [`SKILL.md`](SKILL.md) tell the agent what to run. By hand:
+
 ```bash
-# 0. lessons first -- Bigbrain's first step on every trigger
-python3 scripts/bigbrain_cli.py lessons list --limit 10
-
-# 1. should this be escalated?
-python3 scripts/bigbrain_cli.py score --files-estimated 4 --ambiguity 0.5 --high-risk migration
-# [Bigbrain] evaluating escalation score 0.52 <= 0.60 -> stay_local
-
-# 2. escalate: get the plan, milestones and acceptance criteria
-python3 scripts/bigbrain_cli.py start \
-  --task "Add a TTL cache layer with tests; acceptance: TTL expiry by an injected clock,
-          bounded maxsize with the evicted key asserted, suite green" \
-  --context-file cache.py --files-estimated 4 --ambiguity 0.4 \
-  --session .bigbrain/session-cache
-
-# 3. work milestone m1, then report it
-python3 scripts/bigbrain_cli.py report --session .bigbrain/session-cache --result-file r-m1.md
-# [Bigbrain] milestone 1/3 sent for review (m1)
-# [Bigbrain] verdict: approve for milestone m1
-
-# 4. stuck? hand over the failure
-python3 scripts/bigbrain_cli.py stuck --session .bigbrain/session-cache \
-  --reason "eviction test passes but the key order is wrong" --attempts 2
-
-# 5. inspect, or write the report by hand
-python3 scripts/bigbrain_cli.py status --session .bigbrain/session-cache
-python3 scripts/bigbrain_cli.py finish --session .bigbrain/session-cache
+python3 scripts/bigbrain_cli.py lessons list --limit 10           # always first
+python3 scripts/bigbrain_cli.py score --files-estimated 5 --ambiguity 0.7 --high-risk migration
+python3 scripts/bigbrain_cli.py start  --task "..." --session .bigbrain/s1
+python3 scripts/bigbrain_cli.py report --session .bigbrain/s1 --result-file m1.md
+python3 scripts/bigbrain_cli.py stuck  --session .bigbrain/s1 --reason "..." --attempts 2
+python3 scripts/bigbrain_cli.py status --session .bigbrain/s1
 ```
 
-Exit codes are the loop control: `0` continue · `0` + `DONE` finished · `10` blocked ·
-`11` round budget exhausted · `12` invalid advisor JSON after one repair retry · `2`–`6`
+Exit codes drive the loop: `0` continue · `0` + `DONE` finished · `10` blocked · `11` round
+budget exhausted · `12` invalid advisor JSON after one repair retry · `2`–`6`
 config/network/auth/model/HTTP failures.
 
-Every round is persisted under the session directory (`transcript.json`,
-`round-NN-request.json`, `round-NN-response.json`, `retrospective-*.json`,
-`report.md`, `report.json`) so a run can be inspected afterwards.
+A complete worked example, runnable offline with no API key:
+[`examples/minimal/`](examples/minimal/README.md).
 
-## Lessons and the AGENTS.md guarantee
+## FAQ
 
-Lessons are recorded at user level, in `${BIGBRAIN_HOME:-$HOME/.bigbrain}/experience/`, and are
-injected into advisor requests while the skill is active. The location is validated, not just
-documented: pointing the store inside the skill package or inside a git repository is refused.
+**Does it need Codex?**
+It is written for Codex as the executor, and the installer targets
+`${CODEX_HOME:-~/.codex}/skills`. `./install.sh --claude` also installs it for Claude Code.
 
-**Bigbrain never creates, reads for write, or modifies any `AGENTS.md`, `CLAUDE.md`, or global
-Codex/Claude configuration file.** This is enforced by a guard every write passes through
-(`bigbrain/agents_md.py`), not merely promised in prose. Your `~/.codex/AGENTS.md` is
-untouched; lessons apply only while the skill is active. See
-[`references/experience.md`](references/experience.md).
+**Which providers work?**
+Anything that serves `POST /v1/messages` in Anthropic's format. Each request sends both
+`x-api-key` and `Authorization: Bearer`, since relays differ in which one they check.
 
-## Comparison
+**Will it call the advisor on every task?**
+No. Tasks that score at or below the threshold stay local with no advisor call. Raise
+`BIGBRAIN_THRESHOLD` to escalate less often.
 
-Bigbrain sits in the same family as a few other plugins that hand work from one agent to a
-stronger model. The contrast is in **how the handoff is decided and bounded**. Facts below come
-only from each project's README; full sourcing and fetch date in
-[`references/comparison-sources.md`](references/comparison-sources.md).
+**What stops it looping forever?**
+`BIGBRAIN_MAX_ROUNDS` (default 8). Running out of rounds exits with code `11`, and the
+retrospective and report still run.
 
-| | Bigbrain | sendbird/cc-plugin-codex | openai/codex-plugin-cc | BeehiveInnovations/pal-mcp-server |
-|---|---|---|---|---|
-| Direction | executor → advisor | Codex → Claude Code | Claude Code → Codex | host agent → many providers |
-| Decided by | computed score vs. configurable threshold | user command, or optional turn-end gate | user command, or optional gate | host agent / user picks a tool |
-| Milestones with acceptance criteria | yes; loop cannot end until criteria are met | not mentioned in README | not mentioned in README | not mentioned in README |
-| Token / cost report with savings estimate | yes | not mentioned in README | not mentioned in README | not mentioned in README |
-| Learns across sessions | user-level lesson store, never an AGENTS.md | not mentioned in README | not mentioned in README | not mentioned in README |
-| Extra requirements | none beyond the API | — | ChatGPT subscription or OpenAI API key, Node 18.18+ | MCP host plus provider keys |
+**Can I try it without an API key?**
+Yes: `bash examples/minimal/run.sh` or `bash docs/demo.sh`. Both use scripted replies, so treat
+them as a tour of the mechanics, not a real review.
 
-Two design decisions, stated plainly:
+**Does it install anything with pip?**
+No. It is Python 3 standard library only.
 
-1. **No turn-end gate.** Both Codex/Claude bridge plugins offer an optional gate that reviews
-   after edit-producing turns; their READMEs warn about usage drain, which is why it is off by
-   default. Bigbrain never fires on a turn boundary — it scores the task, so cost is bounded by
-   the decision rather than by how often you happened to edit a file.
-2. **Completion is defined by criteria.** None of the three READMEs mentions a milestone
-   acceptance loop. Bigbrain cannot stop on the advisor's say-so alone.
+**How do I run the tests?**
+`bash tests/run_tests.sh`. It runs end to end under a temporary `HOME` against a local mock
+server. No real API is contacted.
 
-## Testing
+## Contributing
 
-```bash
-bash tests/run_tests.sh
-```
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Runs the whole skill end to end under a temporary `HOME` and `CODEX_HOME`, against a local
-mock server on a random port. No real API is contacted. Covers every failure exit code,
-scoring below/above the threshold and with custom weights, the full milestone loop to `DONE`,
-`stuck` re-escalation, the automatic retrospective, lesson merge/prune, the report's token sums
-and savings, progress lines on stderr, key non-leakage, and an install/uninstall/run cycle that
-asserts no `AGENTS.md` was created or modified anywhere under the temp home.
+## Author
 
-## Layout
+Created by **Chris Kang** ([@kangchainx](https://github.com/kangchainx)), also known as
+"Chris不上班".
 
-```
-SKILL.md                              the skill instructions the agent loads
-agents/openai.yaml                    interface metadata + implicit-invocation policy
-install.sh                            installer: local, or curl | bash from a tarball
-references/config.md                  environment variables, config file, precedence
-references/triggers.md                escalation scoring: signals, weights, threshold
-references/experience.md              the lesson store, and what it never touches
-references/advisor-system-prompt.md   the advisor's system prompt (sent every round)
-references/comparison-sources.md      sourced facts behind the comparison table
-scripts/bigbrain_cli.py               the CLI (thin entry point)
-scripts/check_config.py               config validation + judged ping (kept working)
-scripts/advisor.py                    back-compat wrapper over the CLI
-scripts/mock_server.py                local Anthropic-compatible server for tests
-scripts/bigbrain/                     the package:
-    config.py       env/config.json/config.env loading, constants, errors
-    client.py       the Messages API client (urllib)
-    schema.py       the advisor JSON contract: extraction, validation, normalisation
-    scoring.py      escalation scoring: signals -> score -> decision
-    session.py      transcript, per-round artefacts, token accounting
-    loop.py         one round in, one decision out; milestones, completion, retrospective
-    experience.py   the user-level lesson store: merge, prune, rank, render
-    agents_md.py    the guard that refuses to touch any AGENTS.md
-    report.py       tokens, cost estimate, savings
-    status.py       session state rendering, protected-file audit
-    io.py           file helpers, context loading, [Bigbrain] progress lines
-    check_config.py the config checker implementation
-    fixtures.py     scripted advisor replies for the mock server and examples
-    cli.py          the command line
-examples/minimal/                     worked TTL-cache example + mock_rounds.json
-tests/run_tests.sh                    end-to-end test suite
-```
+If you build on this project, please credit it with a link back to
+[kangchainx/bigbrain-skill](https://github.com/kangchainx/bigbrain-skill). Thank you!
+
+## License
+
+[MIT](LICENSE) © 2026 Chris Kang (kangchainx)

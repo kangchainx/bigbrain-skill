@@ -1,7 +1,7 @@
 # Comparison sources
 
-Facts about three neighbouring projects, used only for the comparison table in
-[`../README.md`](../README.md). Each entry was taken from the project's GitHub README.
+Facts about three neighbouring projects, linked from [`../README.md`](../README.md). Each
+entry was taken from the project's GitHub README.
 
 **Fetched: 2026-10-16.**
 
