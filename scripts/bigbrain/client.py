@@ -36,6 +36,7 @@ import re
 import socket
 import threading
 import time
+from contextlib import contextmanager
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -96,6 +97,40 @@ def _short_body(text, limit=400):
     if len(text) > limit:
         return text[:limit] + "..."
     return text
+
+
+def _redact(text, key):
+    """Remove raw and JSON-escaped credentials before diagnostics are truncated."""
+    if key:
+        for spelling in (json.dumps(key)[1:-1], key):
+            text = text.replace(spelling, "[redacted]")
+    return text
+
+
+@contextmanager
+def _response_budget(response, deadline):
+    """Interrupt even a trickling body or a read waiting for a complete line."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("overall time budget exhausted")
+    sock = response.fp.raw._sock
+
+    def interrupt():
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    timer = threading.Timer(remaining, interrupt)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        timer.cancel()
+        timer.join()
+        if time.monotonic() >= deadline:
+            raise TimeoutError("overall time budget exhausted")
 
 
 class TransientError(BigbrainError):
@@ -427,7 +462,7 @@ def _iter_sse(response, deadline):
     name = None
     data_lines = []
     while True:
-        if deadline is not None and time.time() > deadline:
+        if deadline is not None and time.monotonic() > deadline:
             raise _IncompleteStream("overall time budget exhausted mid-stream")
         raw = response.readline()
         if not raw:
@@ -482,7 +517,7 @@ def _timeouts(cfg, timeout, total_timeout):
     return per_read, total_timeout
 
 
-def _plain_from_stream_response(response, status, payload, started):
+def _plain_from_stream_response(response, status, payload, started, api_key=None):
     """Interpret a non-SSE body that came back to a streaming request.
 
     A JSON object is accepted as an ordinary Messages response -- some relays
@@ -491,7 +526,7 @@ def _plain_from_stream_response(response, status, payload, started):
     hard error naming what arrived, because retrying the same request would
     produce the same bytes.
     """
-    text = response.read().decode("utf-8", "replace")
+    text = _redact(response.read().decode("utf-8", "replace"), api_key)
     latency = int((time.time() - started) * 1000)
     try:
         parsed = json.loads(text)
@@ -533,12 +568,12 @@ def _post_stream(cfg, payload, target, per_read, total_timeout):
     headers["accept"] = "text/event-stream"
     request = urllib.request.Request(target, data=body, headers=headers, method="POST")
     started = time.time()
-    deadline = started + total_timeout
+    deadline = time.monotonic() + total_timeout
     acc = _StreamAccumulator()
     raw_events = []
 
     try:
-        with _opener(target).open(request, timeout=per_read) as response:
+        with _opener(target).open(request, timeout=per_read) as response, _response_budget(response, deadline):
             status = response.status
             content_type = (response.headers.get("content-type") or "").lower()
             if "event-stream" not in content_type:
@@ -548,11 +583,12 @@ def _post_stream(cfg, payload, target, per_read, total_timeout):
                 # a JSON Messages body is usable as-is, anything else is a hard
                 # error naming what actually came back -- retrying would be
                 # pointless, so this is deliberately not a transient failure.
-                return _plain_from_stream_response(response, status, payload, started)
+                return _plain_from_stream_response(response, status, payload, started, cfg.get("api_key"))
             for name, data in _iter_sse(response, deadline):
                 raw_events.append(name)
                 if name == "error":
-                    err_type, err_msg = _stream_error(data)
+                    safe_data = json.loads(_redact(json.dumps(data), cfg.get("api_key")))
+                    err_type, err_msg = _stream_error(safe_data)
                     exit_code = EXIT_HTTP
                     if err_type in _TRANSIENT_SSE_ERRORS:
                         raise TransientError(
@@ -628,9 +664,10 @@ def _post_plain(cfg, payload, target, per_read, total_timeout):
     headers["accept"] = "application/json"
     request = urllib.request.Request(target, data=body, headers=headers, method="POST")
     started = time.time()
+    deadline = time.monotonic() + total_timeout
     try:
-        with _opener(target).open(request, timeout=per_read) as response:
-            text = response.read().decode("utf-8", "replace")
+        with _opener(target).open(request, timeout=per_read) as response, _response_budget(response, deadline):
+            text = _redact(response.read().decode("utf-8", "replace"), cfg.get("api_key"))
             latency = int((time.time() - started) * 1000)
             parsed = None
             try:
@@ -682,13 +719,17 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
     retries = int(cfg.get("retries", DEFAULT_RETRIES))
     backoff = float(cfg.get("retry_backoff", DEFAULT_RETRY_BACKOFF))
     per_read, total = _timeouts(cfg, timeout, total_timeout)
+    deadline = time.monotonic() + total
 
     send = _post_stream if stream else _post_plain
     attempt = 0
     while True:
         attempt += 1
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise BigbrainError("overall time budget exhausted calling %s" % target, EXIT_NETWORK)
         try:
-            return send(cfg, payload, target, per_read, total)
+            return send(cfg, payload, target, min(per_read, remaining), remaining)
         except TransientError as exc:
             if attempt > retries:
                 raise BigbrainError(str(exc), exc.exit_code, **exc.extra)
@@ -697,13 +738,18 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
                 % (PROGRESS_PREFIX, exc.label, attempt, retries)
             )
             if backoff:
-                time.sleep(backoff * attempt)
+                time.sleep(min(backoff * attempt, max(0, deadline - time.monotonic())))
         except urllib.error.HTTPError as exc:
             text = ""
             try:
-                text = exc.read().decode("utf-8", "replace")
+                with _response_budget(exc.fp, deadline):
+                    text = _redact(exc.read().decode("utf-8", "replace"), cfg.get("api_key"))
+            except (socket.timeout, TimeoutError):
+                raise BigbrainError("overall time budget exhausted reading API error", EXIT_NETWORK) from None
             except Exception:  # pragma: no cover - defensive
                 pass
+            finally:
+                exc.close()
             status = exc.code
             code, label = _classify_http_status(status)
             detail = "%s: HTTP %d from %s -- %s" % (label, status, target, _short_body(text))
@@ -715,7 +761,7 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
                     % (PROGRESS_PREFIX, status, attempt, retries)
                 )
                 if backoff:
-                    time.sleep(backoff * attempt)
+                    time.sleep(min(backoff * attempt, max(0, deadline - time.monotonic())))
                 continue
             raise BigbrainError(detail, code, http_status=status, body=text)
         except urllib.error.URLError as exc:
@@ -736,7 +782,7 @@ def post_messages(cfg, payload, timeout=None, url=None, total_timeout=None):
                     % (PROGRESS_PREFIX, attempt, retries)
                 )
                 if backoff:
-                    time.sleep(backoff * attempt)
+                    time.sleep(min(backoff * attempt, max(0, deadline - time.monotonic())))
                 continue
             raise BigbrainError(
                 "network error calling %s: %s (DNS failure, connection refused, or proxy problem)"

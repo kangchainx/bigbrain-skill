@@ -45,15 +45,12 @@ the score is always between 0 and 1 regardless of what you configure.
 
 **Escalate when `score > threshold`**, default threshold `0.60`.
 
-The strict `>` matters: a task sitting exactly on the threshold stays local. At the defaults
-the threshold is reached by, for example, five files plus ambiguity 0.5 (0.30 + 0.125 = 0.425,
-no) — so in practice it takes two strong signals: high-risk plus ambiguity, or five files
-plus a high-risk tag, or an explicit user request plus anything substantial. One weak signal
-alone never escalates, which is the point: `4 files` scores 0.24 and stays local.
+Without an explicit user request, the strict `>` matters: a task sitting exactly on
+the threshold stays local. For example, five files, ambiguity 1.0 and a high-risk tag
+score 0.30 + 0.25 + 0.15 = 0.70 and escalate. Four files alone score 0.24 and stay local.
 
-`--user-request` alone scores 0.10 and does **not** cross the threshold, but it does two
-things: it marks the escalation as user-driven in the report, and it bypasses the
-below-threshold refusal in `start`.
+`--user-request` alone scores 0.10 but forces an `escalate` decision in both `score`
+and `start`, regardless of the threshold. It also records that the user requested the advisor.
 
 ## Configuration
 

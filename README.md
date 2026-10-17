@@ -63,7 +63,8 @@ flowchart TD
   requests, merged and pruned by confidence × recency.
 - **Usage and savings report.** Advisor tokens summed from the API's `usage` fields, a cost
   estimate at configurable prices, and the estimated saving versus sending everything to the
-  premium model. Written to `report.md` and `report.json`.
+  premium model. Saved internally to `report.md` and `report.json`; displayed only
+  when requested with `finish`. Normal use shows brief progress and the task result.
 - **Visible progress.** Every step prints a `[Bigbrain] ...` line to stderr.
 - **Streaming with retries.** SSE by default so proxies don't time out on long thinking turns;
   transient errors (429/5xx/524, dropped streams) are retried with backoff.

@@ -428,7 +428,7 @@ def parse_advisor_reply(text, expect=None):
 # --------------------------------------------------------------------------
 
 
-def criteria_all_met(normalised):
+def criteria_all_met(normalised, expected=None):
     """True when the advisor has marked every acceptance criterion met.
 
     A reply that reports no criteria at all cannot end the loop: the advisor has
@@ -437,10 +437,12 @@ def criteria_all_met(normalised):
     status_list = normalised.get("criteria_status") or []
     if not status_list:
         return False
-    return all(bool(item.get("met")) for item in status_list)
+    expected = expected or normalised.get("acceptance_criteria") or []
+    reported = {item["criterion"] for item in status_list}
+    return set(expected).issubset(reported) and all(bool(item.get("met")) for item in status_list)
 
 
-def criteria_outstanding(normalised):
+def criteria_outstanding(normalised, expected=None):
     """The criteria the advisor did not mark met, as display strings."""
     out = []
     for item in normalised.get("criteria_status") or []:
@@ -448,6 +450,8 @@ def criteria_outstanding(normalised):
             text = item.get("criterion") or "(unnamed criterion)"
             evidence = item.get("evidence") or ""
             out.append("%s%s" % (text, " -- %s" % evidence if evidence else ""))
+    reported = {item["criterion"] for item in normalised.get("criteria_status") or []}
+    out.extend("%s -- not reported" % text for text in expected or [] if text not in reported)
     return out
 
 

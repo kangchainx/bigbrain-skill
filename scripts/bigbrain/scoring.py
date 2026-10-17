@@ -134,7 +134,7 @@ def score_task(
 
     score = round(sum(components.values()), 6)
     score = max(0.0, min(1.0, score))
-    decision = "escalate" if score > effective_threshold else "stay_local"
+    decision = "escalate" if user_request or score > effective_threshold else "stay_local"
 
     reasons = []
     if signals["files"]:
@@ -166,6 +166,8 @@ def banner_line(result, prefix="[Bigbrain]"):
 
     ``[Bigbrain] evaluating escalation score 0.72 > 0.60 -> escalate``
     """
+    if result["signals"]["user_request"]:
+        return "%s user requested the advisor -> escalate (score %.2f)" % (prefix, result["score"])
     operator = ">" if result["decision"] == "escalate" else "<="
     return "%s evaluating escalation score %.2f %s %.2f -> %s" % (
         prefix,

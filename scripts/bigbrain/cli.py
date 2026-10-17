@@ -334,8 +334,8 @@ def _close_out(session_dir, transcript, cfg, args, progress, mock_entries, mock_
     and does not change the loop's exit code: the work is already done, and a
     missing postscript is not a reason to call the run failed.
 
-    Everything human-readable goes to **stderr** -- the report markdown included
-    -- because stdout belongs to the one final JSON object (item 4).  Returns
+    Detailed reports stay in the session; `finish` displays them on request.
+    Stdout belongs to the one final JSON object (item 4). Returns
     ``(report_path, retrospective_metadata)`` so that object can point at both.
     """
     retrospective_metadata = None
@@ -354,9 +354,7 @@ def _close_out(session_dir, transcript, cfg, args, progress, mock_entries, mock_
 
     save_transcript(session_dir, transcript)
 
-    payload = report.write_report(session_dir, transcript, cfg=cfg, progress=progress)
-    eprint("")
-    report.print_report(payload, stream=sys.stderr)
+    report.write_report(session_dir, transcript, cfg=cfg)
     return str(Path(session_dir) / "report.json"), retrospective_metadata
 
 
@@ -551,7 +549,7 @@ def cmd_report(args, cfg, progress):
     user_content = "\n\n".join(parts)
 
     mock_entries = _mock_entries(cfg, args)
-    mock_index = len(transcript["rounds"])
+    mock_index = transcript.get("mock_index", len(transcript["rounds"]))
 
     normalised, _raw, meta, index_after = loop.run_round(
         session_dir, transcript, user_content, cfg,
@@ -630,7 +628,7 @@ def cmd_stuck(args, cfg, progress):
 
     banner(progress, cfg, "stuck: %s" % (milestone_id or "current step"))
     mock_entries = _mock_entries(cfg, args)
-    mock_index = len(transcript["rounds"])
+    mock_index = transcript.get("mock_index", len(transcript["rounds"]))
     normalised, _raw, meta, index_after = loop.run_round(
         session_dir, transcript, user_content, cfg,
         mock_entries=mock_entries, mock_index=mock_index, dry_run=args.dry_run, progress=progress,
@@ -666,7 +664,7 @@ def cmd_finish(args, cfg, progress):
 
     if not transcript.get("retrospective") and not args.no_retrospective:
         mock_entries = _mock_entries(cfg, args)
-        index = len(transcript["rounds"])
+        index = transcript.get("mock_index", len(transcript["rounds"]))
         normalised, index = loop.run_retrospective(
             session_dir, transcript, cfg, mock_entries=mock_entries, mock_index=index, progress=progress
         )

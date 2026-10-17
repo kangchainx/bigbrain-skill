@@ -67,14 +67,6 @@ PRIMARY_DIR="$PRIMARY_ROOT/skills"
 AGENTS_DIR="$HOME/.agents/skills"
 CLAUDE_DIR="$HOME/.claude/skills"
 
-targets() {
-  if [ -n "$DEST" ]; then
-    echo "$DEST"
-  else
-    echo "$PRIMARY_DIR"
-  fi
-}
-
 # --------------------------------------------------------------------------
 # Uninstall
 # --------------------------------------------------------------------------
@@ -205,9 +197,7 @@ install_into() {
   fi
 }
 
-for dir in $(targets); do
-  install_into "$dir"
-done
+install_into "${DEST:-$PRIMARY_DIR}"
 
 # A symlink alongside the primary install keeps both lookup paths working.
 if [ -z "$DEST" ] && [ "$PRIMARY_DIR" != "$AGENTS_DIR" ]; then

@@ -144,6 +144,9 @@ class Progress:
 
     # -- named events used across the package --------------------------------
     def score(self, result):
+        if result["signals"]["user_request"]:
+            self.line("user requested the advisor -> escalate (score %.2f)" % result["score"])
+            return
         self.line(
             "evaluating escalation score %.2f %s %.2f -> %s"
             % (

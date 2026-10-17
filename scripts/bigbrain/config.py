@@ -420,6 +420,7 @@ def load_config(env=None, config_file=None, json_file=None):
     max_tokens_raw, _ = raw("BIGBRAIN_MAX_TOKENS")
     max_tokens_cap_raw, _ = raw("BIGBRAIN_MAX_TOKENS_CAP", str(DEFAULT_MAX_TOKENS_CAP))
     timeout_raw, _ = raw("BIGBRAIN_TIMEOUT")
+    total_timeout_raw, _ = raw("BIGBRAIN_MAX_TOTAL_TIMEOUT")
     stream_raw, _ = raw("BIGBRAIN_STREAM")
     retries_raw, _ = raw("BIGBRAIN_RETRIES", str(DEFAULT_RETRIES))
     backoff_raw, _ = raw("BIGBRAIN_RETRY_BACKOFF", str(DEFAULT_RETRY_BACKOFF))
@@ -437,6 +438,9 @@ def load_config(env=None, config_file=None, json_file=None):
             max_tokens_cap_raw, "BIGBRAIN_MAX_TOKENS_CAP", problems, DEFAULT_MAX_TOKENS_CAP
         ),
         "timeout": _as_int(timeout_raw, "BIGBRAIN_TIMEOUT", problems, DEFAULT_TIMEOUT),
+        "max_total_timeout": _as_int(
+            total_timeout_raw, "BIGBRAIN_MAX_TOTAL_TIMEOUT", problems, DEFAULT_MAX_TOTAL_TIMEOUT
+        ),
         "stream": _as_bool(stream_raw, "BIGBRAIN_STREAM", problems, DEFAULT_STREAM),
         # ``retries`` counts *retries*, not attempts: 0 disables retrying.
         "retries": _as_int(

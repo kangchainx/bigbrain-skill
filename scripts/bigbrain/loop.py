@@ -507,6 +507,8 @@ def run_round(
     transcript["messages"] = full_messages + [
         {"role": "assistant", "content": json.dumps(normalised, ensure_ascii=False)}
     ]
+    if mock_entries is not None:
+        transcript["mock_index"] = mock_index
     return normalised, raw, meta, mock_index
 
 
@@ -643,9 +645,10 @@ def decide(transcript, normalised):
         }
 
     if status == "done":
-        if schema.criteria_all_met(normalised):
+        expected = transcript.get("acceptance_criteria") or normalised.get("acceptance_criteria")
+        if schema.criteria_all_met(normalised, expected):
             return STATE_DONE, EXIT_OK, {"criteria_met": len(normalised["criteria_status"])}
-        outstanding = schema.criteria_outstanding(normalised)
+        outstanding = schema.criteria_outstanding(normalised, expected)
         if not normalised["criteria_status"]:
             note = (
                 "advisor returned status=done but no criteria_status, so no acceptance "
@@ -851,6 +854,8 @@ def run_retrospective(
         eprint("[Bigbrain] retrospective call failed: %s" % exc)
         return None, mock_index
 
+    if mock_entries is not None:
+        transcript["mock_index"] = mock_index
     meta["elapsed_ms"] = 0
     record_usage(transcript, usage, kind=KIND_RETROSPECTIVE, model=meta.get("model"))
     record_cache_usage(transcript, usage, kind=KIND_RETROSPECTIVE)
@@ -879,7 +884,7 @@ def run_retrospective(
     # stderr, not stdout: the summary is prose and stdout is reserved for the
     # single final JSON object.  Metadata about the retrospective (recorded=True,
     # lessons_saved=N) is added to that object by render_final.
-    eprint("[Bigbrain] retrospective: %s" % (normalised.get("summary") or "(no summary)"))
+    progress.line("retrospective completed")
     return normalised, mock_index
 
 

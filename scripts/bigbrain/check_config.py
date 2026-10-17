@@ -165,6 +165,8 @@ def main(argv=None):
         "model": model,
         "api_key": mask_secret(cfg["api_key"]),
         "api_key_source": cfg["sources"].get("api_key", "?"),
+        "config_sources": {name: cfg["sources"].get(name, "?")
+                           for name in ("base_url", "model", "api_key")},
         "max_tokens": cfg["max_tokens"],
         "max_rounds": cfg["max_rounds"],
         "timeout": cfg["timeout"],

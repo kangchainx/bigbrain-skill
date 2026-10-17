@@ -43,6 +43,10 @@ curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/inst
 
 ## 配置
 
+安装或重装后首次启用时，先说明已有配置的服务商、模型和来源，并让用户选择复用或重新配置。
+不会自动沿用旧模型；已明确选择的配置不需要每轮确认。
+日常使用只显示简短进度和任务结果，不自动打开或提供审查报告。详细记录仅在明确要求时展示。
+
 在 Codex 中让 Bigbrain 配置 API，skill 会在内置浏览器打开本机配置表单，**一次只填一项**：
 HTTPS 地址 → 密码框输入 API Key → 模型选择。无需把 Key 发到聊天里。
 

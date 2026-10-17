@@ -9,6 +9,23 @@ You are the **executor**. A separate advisor model (default `claude-opus-5-5`) p
 reviews and directs. Escalate complex work to it in a milestone loop, act on each
 instruction, and report back — instead of stopping to ask the user for every decision.
 
+## Everyday interaction
+
+Bigbrain is part of doing the user's task, not a report-producing task of its own.
+Keep advisor plans, milestone evidence and session reports internal. Do not create,
+open, attach or link a separate report unless the user explicitly asks for one.
+The `report` command sends evidence to the advisor; it does not ask the user to read it.
+Finish with the result, relevant verification and any remaining blocker, briefly.
+
+Show short progress messages in the conversation when the advisor starts (include
+the actual model), a meaningful milestone changes, a review requests revisions,
+or the run completes or fails. Command stderr may be collapsed by the host UI,
+so do not rely on `[Bigbrain]` logs alone. Use actual tool results, not invented
+progress or private reasoning. Do not repeat unchanged status or expose the full plan.
+
+User testing and feedback are instructions to improve the experience, not a reason
+to ask them to manage the advisor loop or inspect diagnostic files.
+
 ## Step 0 — always, before anything else: load your lessons
 
 ```bash
@@ -29,6 +46,15 @@ is active. See `references/experience.md`.
 
 If the user asks to configure or replace credentials, enter the configuration
 flow below directly; do not probe the old endpoint first.
+
+When installing/reinstalling this skill or handling its first activation after
+installation, run `python3 <skill>/scripts/check_config.py --no-call --json` first.
+If a local configuration exists, show only its provider, exact model and source,
+then offer **reuse this configuration** or **configure again** before sending a
+provider request. Installation alone is not consent to silently reuse an old model.
+Do not show the key, including its masked suffix. If no configuration exists, open
+the setup form. An explicit configuration choice already made in the conversation
+satisfies this step; do not ask again on each task, turn or milestone.
 
 ```bash
 python3 <skill>/scripts/check_config.py
@@ -75,7 +101,7 @@ python3 <skill>/scripts/bigbrain_cli.py score \
   --files-estimated 4 --ambiguity 0.4 --high-risk migration
 ```
 
-Prints `[Bigbrain] evaluating escalation score 0.72 > 0.60 -> escalate`. Escalate when the
+Prints `[Bigbrain] evaluating escalation score 0.49 <= 0.60 -> stay_local`. Escalate when the
 decision is `escalate`; do the work locally when it is `stay_local`. `--user-request` forces
 escalation when the user explicitly asked for the advisor. Weights and the threshold are
 configurable — see `references/triggers.md`.
@@ -137,14 +163,15 @@ met in `criteria_status`. A `done` with unproven criteria continues, with a note
 
 When the loop ends for any reason, Bigbrain runs a **retrospective** automatically (one more
 advisor call), saves the lessons it returns, and writes `report.md` + `report.json` into the
-session directory. You do not need to trigger it; to do it by hand, use `finish`.
+session directory for internal diagnostics. Do not surface these files by default.
+Use `finish` to display the detailed report only when the user asks for it.
 
 ## Example
 
 ```bash
 python3 scripts/check_config.py                                  # OK
 python3 scripts/bigbrain_cli.py lessons list --limit 10          # step 0
-python3 scripts/bigbrain_cli.py score --files-estimated 4 --ambiguity 0.4
+python3 scripts/bigbrain_cli.py score --files-estimated 4 --ambiguity 0.4 --user-request
 # -> escalate
 python3 scripts/bigbrain_cli.py start \
   --task "Add a TTL cache layer to cache.py with tests; acceptance: TTL expiry by an \

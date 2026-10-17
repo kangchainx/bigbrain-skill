@@ -619,7 +619,7 @@ expect_contains "loop: prints DONE on stderr"  "DONE"              "$FINAL_ERR"
 expect_contains "loop: status done"            '"status": "done"'  "$FINAL_OUT"
 expect_contains "loop: all criteria met"       '"met": true'       "$FINAL_OUT"
 expect_contains "loop: final report mentions the retrospective" "retrospective" "$FINAL_ERR"
-expect_contains "loop: report markdown goes to stderr" "# bigbrain report" "$FINAL_ERR"
+expect_absent "loop: automatic completion does not print a report" "# bigbrain report" "$FINAL_ERR"
 
 # Artefacts
 for f in transcript.json round-01-request.json round-01-response.json \
@@ -642,9 +642,8 @@ else
   bad "loop: all three milestones recorded approved" "$out"
 fi
 
-# The retrospective ran automatically during that final report, and its narrative
-# was printed to stderr (not stdout, which is reserved for JSON).
-expect_contains "loop: retrospective narrative on stderr" "run went cleanly" "$FINAL_ERR"
+# The retrospective ran automatically; only its completion notice is printed.
+expect_absent "loop: retrospective narrative stays internal" "run went cleanly" "$FINAL_ERR"
 expect_contains "loop: retrospective announced on stderr" "retrospective" "$FINAL_ERR"
 expect_contains "loop: lessons reported as saved" "lessons saved" "$FINAL_ERR"
 
@@ -863,9 +862,16 @@ else
 fi
 
 printf 'BIG REPORT\n' > "$WORK/ctxreport.md"
+"$PY" - "$REPAIRFILE" "$WORK/context-mock.json" <<'PYEOF'
+import json, sys
+entries = json.load(open(sys.argv[1]))
+entries.append(entries[-1])  # Two replies were already consumed by start + repair.
+with open(sys.argv[2], "w") as handle:
+    json.dump(entries, handle)
+PYEOF
 run_expect_exit "context: unreadable context file is a note, not a failure" 0 \
   env BIGBRAIN_BASE_URL="http://127.0.0.1:9" BIGBRAIN_API_KEY="$API_KEY" \
-  BIGBRAIN_MOCK="$REPAIRFILE" "$PY" "$CLI" report --session "$S_REPAIR" --result-file "$WORK/ctxreport.md" \
+  BIGBRAIN_MOCK="$WORK/context-mock.json" "$PY" "$CLI" report --session "$S_REPAIR" --result-file "$WORK/ctxreport.md" \
   --context-file "$WORK/definitely-missing.txt" --quiet
 echo
 
@@ -1037,7 +1043,7 @@ PYEOF
 then ok "report: completed_early count in report.json"
 else bad "report: completed_early count in report.json" "$(head -c 400 "$S_EARLY/report.json" 2>&1)"; fi
 
-expect_contains "report: markdown shows completed early" "1 approved, 1 completed early" "$out"
+expect_contains "report: saved markdown shows completed early" "1 approved, 1 completed early" "$(cat "$S_EARLY/report.md")"
 
 echo
 
@@ -1273,7 +1279,7 @@ else bad "package: mock_rounds.json has the milestone schema, done, lessons and 
 
 # Stdlib only. Relative imports (`from .x import y`) are intra-package and are
 # allowed; anything else must be on the stdlib allowlist.
-ALLOWED='argparse|json|os|re|socket|ssl|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|hmac|secrets|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass'
+ALLOWED='argparse|contextlib|json|os|re|socket|ssl|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|hmac|secrets|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass'
 UNEXPECTED="$(grep -rnE '^[[:space:]]*(import|from)[[:space:]]+' "$SCRIPTS" --include='*.py' \
   | grep -vE ':[0-9]+:[[:space:]]*from[[:space:]]+\.' \
   | grep -vE '(import|from)[[:space:]]+('"$ALLOWED"')([[:space:].]|$)' || true)"
@@ -1376,7 +1382,7 @@ echo
 echo "-- setup wizard --"
 "$PY" "$ROOT/tests/tls_fixture.py" "$WORK/tls" || exit 1
 export SSL_CERT_FILE="$WORK/tls/cert.pem"
-run_expect_exit "setup: catalogue and Codex JSON regression tests" 0 "$PY" -m unittest discover -s "$ROOT/tests" -p "test_setup*.py"
+run_expect_exit "Python regression tests" 0 "$PY" -m unittest discover -s "$ROOT/tests" -p "test_*.py"
 SETUP_PY="$SCRIPTS/setup.py"
 SETUP_KEY="sk-setup-test-key-9876"     # what the setup mocks accept; must never be printed
 SETUP_MASK="****9876"

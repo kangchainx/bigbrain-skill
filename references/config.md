@@ -101,7 +101,7 @@ save-anyway. `install.sh --no-setup` skips the terminal prompt for scripted inst
 |----------|---------|---------|
 | `BIGBRAIN_MODEL` | `claude-opus-5-5` | Advisor model id (provider-specific, see below) |
 | `BIGBRAIN_MAX_ROUNDS` | `8` | Round budget before exit `11` |
-| `BIGBRAIN_MAX_TOKENS` | `8000` | `max_tokens` per advisor reply |
+| `BIGBRAIN_MAX_TOKENS` | `16000` | `max_tokens` per advisor reply |
 | `BIGBRAIN_TIMEOUT` | `300` | Per-read socket timeout in seconds (see below) |
 | `BIGBRAIN_STREAM` | `1` | Stream the reply as SSE. `0` disables |
 | `BIGBRAIN_RETRIES` | `2` | Retries for transient failures. `0` disables |
