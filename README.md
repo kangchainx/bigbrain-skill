@@ -102,7 +102,7 @@ From a checkout:
 ```bash
 git clone https://github.com/kangchainx/bigbrain-skill.git
 cd bigbrain-skill
-./install.sh                       # ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain + ~/.agents/skills link
+./install.sh                       # ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain only
 ./install.sh --claude              # also install into ~/.claude/skills/bigbrain
 ./install.sh --copy                # copy instead of symlink
 ./install.sh --no-setup            # don't offer the setup wizard afterwards
@@ -119,6 +119,9 @@ curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/inst
 
 `tests/`, `docs/`, `.github/`, `.bigbrain/` and any lesson store are left out when the skill
 is copied into place.
+
+The installer does not create a second entry in `~/.agents/skills`, since Codex
+also scans that directory. Use `--dir PATH` to choose a different destination.
 
 ## Configure
 

@@ -34,6 +34,9 @@ npx skills add kangchainx/bigbrain-skill
 git clone https://github.com/kangchainx/bigbrain-skill.git && cd bigbrain-skill && ./install.sh
 ```
 
+安装脚本默认只安装到 `${CODEX_HOME:-$HOME/.codex}/skills/bigbrain`，不再向
+`~/.agents/skills` 安装第二份，避免 Codex 显示重复条目。指定其他目录可用 `--dir PATH`。
+
 或一行命令：
 
 ```bash

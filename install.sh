@@ -3,7 +3,6 @@
 #
 # From a checkout:
 #   ./install.sh                 -> ${CODEX_HOME:-$HOME/.codex}/skills/bigbrain
-#                                  plus a symlink in $HOME/.agents/skills/bigbrain
 #   ./install.sh --claude        -> also install into ~/.claude/skills/bigbrain
 #   ./install.sh --copy          -> copy instead of symlink
 #   ./install.sh --uninstall     -> remove the skill (keeps the experience store)
@@ -197,12 +196,9 @@ install_into() {
   fi
 }
 
+# Codex discovers both personal skill directories; install only once.
 install_into "${DEST:-$PRIMARY_DIR}"
 
-# A symlink alongside the primary install keeps both lookup paths working.
-if [ -z "$DEST" ] && [ "$PRIMARY_DIR" != "$AGENTS_DIR" ]; then
-  install_into "$AGENTS_DIR"
-fi
 if [ "$CLAUDE" -eq 1 ] && [ "$PRIMARY_DIR" != "$CLAUDE_DIR" ]; then
   install_into "$CLAUDE_DIR"
 fi

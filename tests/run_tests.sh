@@ -1166,8 +1166,14 @@ else bad "install: local install -> exit 0" "rc=$rc :: $out"; fi
 expect_contains "install: Codex setup guidance uses the local browser form" "bigbrain_cli.py setup --web" "$out"
 if [ -e "$INST_CODEX/skills/bigbrain/SKILL.md" ]; then ok "install: skill lands in CODEX_HOME/skills"
 else bad "install: skill lands in CODEX_HOME/skills" "$(ls -la "$INST_CODEX/skills" 2>&1 | head -3)"; fi
-if [ -e "$INST_HOME/.agents/skills/bigbrain" ]; then ok "install: symlink in ~/.agents/skills"
-else bad "install: symlink in ~/.agents/skills"; fi
+if [ ! -e "$INST_HOME/.agents/skills/bigbrain" ] && [ ! -L "$INST_HOME/.agents/skills/bigbrain" ]; then
+  ok "install: no duplicate entry in ~/.agents/skills"
+else bad "install: no duplicate entry in ~/.agents/skills"; fi
+out="$(HOME="$INST_HOME" CODEX_HOME="$INST_CODEX" bash "$ROOT/install.sh" --no-setup </dev/null 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$INST_CODEX/skills/bigbrain/SKILL.md" ] \
+  && [ ! -e "$INST_HOME/.agents/skills/bigbrain" ] && [ ! -L "$INST_HOME/.agents/skills/bigbrain" ]; then
+  ok "install: repeated symlink install keeps a single entry"
+else bad "install: repeated symlink install keeps a single entry" "$out"; fi
 
 # curl | bash: no checkout, so it downloads the tarball from BIGBRAIN_SRC.
 TARBALL="$WORK/inst/bigbrain.tar.gz"
@@ -1185,6 +1191,9 @@ if [ "$rc" -eq 0 ]; then ok "install: curl|bash (BIGBRAIN_SRC tarball) -> exit 0
 else bad "install: curl|bash (BIGBRAIN_SRC tarball) -> exit 0" "rc=$rc :: $(printf '%s' "$out" | tail -c 300)"; fi
 if [ -e "$INST2_CODEX/skills/bigbrain/SKILL.md" ]; then ok "install: downloaded skill is usable"
 else bad "install: downloaded skill is usable" "$(ls "$INST2_CODEX/skills" 2>&1)"; fi
+if [ ! -e "$INST2_HOME/.agents/skills/bigbrain" ] && [ ! -L "$INST2_HOME/.agents/skills/bigbrain" ]; then
+  ok "install: downloaded copy has no duplicate entry"
+else bad "install: downloaded copy has no duplicate entry"; fi
 if [ ! -e "$INST2_CODEX/skills/bigbrain/tests" ]; then ok "install: tests/ excluded from the install"
 else bad "install: tests/ excluded from the install"; fi
 if [ -f "$INST2_CODEX/skills/bigbrain/scripts/bigbrain/setup_ui/index.html" ] \
@@ -1192,6 +1201,12 @@ if [ -f "$INST2_CODEX/skills/bigbrain/scripts/bigbrain/setup_ui/index.html" ] \
   && [ -f "$INST2_CODEX/skills/bigbrain/scripts/bigbrain/setup_ui/setup.css" ]; then
   ok "install: copied skill includes all local configuration form assets"
 else bad "install: copied skill includes all local configuration form assets"; fi
+
+out="$(HOME="$INST2_HOME" CODEX_HOME="$INST2_CODEX" bash "$ROOT/install.sh" --copy --no-setup </dev/null 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$INST2_CODEX/skills/bigbrain/SKILL.md" ] \
+  && [ ! -e "$INST2_HOME/.agents/skills/bigbrain" ] && [ ! -L "$INST2_HOME/.agents/skills/bigbrain" ]; then
+  ok "install: repeated copy install keeps a single entry"
+else bad "install: repeated copy install keeps a single entry" "$out"; fi
 
 # The installed skill runs the full loop.
 INST_SESSION="$WORK/inst-session"
