@@ -6,11 +6,54 @@ system.  All writes are atomic-ish: write to a sibling temp file, then replace.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 from .config import DEFAULT_MAX_CONTEXT_CHARS, EXIT_CONFIG, BigbrainError
+
+
+def image_media_type(data):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def attach_images(text, paths):
+    """Send actual image bytes, not paths or a textual base64 representation."""
+    if not paths:
+        return text
+    blocks = []
+    for index, raw_path in enumerate(paths, 1):
+        path = Path(raw_path)
+        try:
+            # Conservative relay-compatible limit: 5 MB after base64 encoding.
+            with path.open("rb") as handle:
+                data = handle.read(3_750_001)
+        except OSError as exc:
+            raise BigbrainError("cannot read image %s: %s" % (path, exc), EXIT_CONFIG)
+        if len(data) > 3_750_000:
+            raise BigbrainError("image %s exceeds 5 MB encoded; resize it first" % path, EXIT_CONFIG)
+        media_type = image_media_type(data)
+        if not media_type:
+            raise BigbrainError("unsupported image %s; use PNG, JPEG, GIF or WebP, not a video" % path,
+                                EXIT_CONFIG)
+        label = "Image %d: %s (sha256=%s)" % (index, path.name, hashlib.sha256(data).hexdigest())
+        blocks.extend([
+            {"type": "text", "text": label},
+            {"type": "image", "source": {"type": "base64", "media_type": media_type,
+                                          "data": base64.b64encode(data).decode("ascii")}},
+        ])
+    blocks.append({"type": "text", "text": text})
+    return blocks
 
 
 def write_json(path, obj):
@@ -96,6 +139,11 @@ def read_context_files(paths, cap=DEFAULT_MAX_CONTEXT_CHARS):
     for raw_path in paths or []:
         path = Path(raw_path)
         try:
+            with path.open("rb") as handle:
+                header = handle.read(12)
+            if image_media_type(header):
+                raise BigbrainError("image %s requires --image-file, not --context-file" % path,
+                                    EXIT_CONFIG)
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             notes.append("could not read %s: %s" % (raw_path, exc))

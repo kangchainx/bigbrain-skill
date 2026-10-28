@@ -1,6 +1,6 @@
 # Bigbrain
 
-**Codex drives, Claude co-pilots.** An agent skill that lets Codex do the work and call in an
+**Claude helps plan; Codex executes and reviews, with optional Claude second review.** An agent skill that lets Codex do the work and call in an
 Opus advisor only when the task is hard enough to need one — then keeps going, milestone by
 milestone, until the acceptance criteria are actually met.
 
@@ -19,7 +19,7 @@ code, running tests.
 
 Bigbrain splits those two jobs. Codex stays the executor and does the bulk of the work. When a
 task scores as complex or risky, it escalates to an advisor model over any Anthropic-compatible
-Messages API. The advisor plans in milestones with acceptance criteria, reviews Codex's real
+Messages API, or use the Claude Code CLI backend. The advisor plans in milestones with acceptance criteria, reviews Codex's real
 output, and keeps pushing the task forward. Simple tasks never leave Codex.
 
 ## How it works
@@ -53,6 +53,9 @@ flowchart TD
 ## Features
 
 - **Computed escalation.** A weighted score against a configurable threshold, not a gut call.
+- **Task-based reasoning effort.** The executor chooses medium by default, high for
+  difficult work, or xhigh for the hardest problems. `--effort` sets the CLI/API request
+  explicitly and persists across rounds; xhigh is the ceiling, with no max option.
 - **Milestones with a real finish line.** A `done` that cannot say which criteria passed keeps
   looping.
 - **`stuck` re-escalation.** Hand over the failure and the attempts so far, and get a different
@@ -64,8 +67,15 @@ flowchart TD
 - **Usage and savings report.** Advisor tokens summed from the API's `usage` fields, a cost
   estimate at configurable prices, and the estimated saving versus sending everything to the
   premium model. Saved internally to `report.md` and `report.json`; displayed only
-  when requested with `finish`. Normal use shows brief progress and the task result.
-- **Visible progress.** Every step prints a `[Bigbrain] ...` line to stderr.
+  when requested with `finish`. Every task ends with a compact advisor cost estimate,
+  including recorded repair and retrospective calls. Missing usage is flagged.
+  The CLI backend uses Claude Code’s reported estimate; it is not proof of an actual
+  subscription charge. The API backend uses configured token prices.
+- **Visible collaboration.** Role-labelled chat updates show Claude’s plan and review
+  reasons, Codex’s implementation/checks, and Claude’s final acceptance. Only real
+  results are relayed, never private chain-of-thought or invented dialogue.
+- **Immediate user feedback.** `feedback` reopens even a completed task, asks Claude
+  to diagnose before edits, invalidates old acceptance evidence and requires fresh review.
 - **Streaming with retries.** SSE by default so proxies don't time out on long thinking turns;
   transient errors (429/5xx/524, dropped streams) are retried with backoff.
 - **Python 3 standard library only.** No pip installs, no dependencies.
@@ -84,7 +94,7 @@ session.
 | What "done" means | The agent's own judgement | The driving agent's judgement | Advisor says `done` **and** every acceptance criterion is marked met |
 | Token / cost report with savings estimate | No savings estimate (one model) | See its docs | Yes, per run |
 | Lessons across sessions | Via your own `AGENTS.md`, if you keep one | See its docs | User-level store in `~/.bigbrain`, never an `AGENTS.md` |
-| Extra requirements | — | An MCP host plus Codex | An Anthropic-compatible API key |
+| Extra requirements | — | An MCP host plus Codex | Claude Code login or an Anthropic-compatible API key |
 
 For a sourced comparison with sendbird/cc-plugin-codex, openai/codex-plugin-cc and
 pal-mcp-server, see [`references/comparison-sources.md`](references/comparison-sources.md).
@@ -124,6 +134,27 @@ The installer does not create a second entry in `~/.agents/skills`, since Codex
 also scans that directory. Use `--dir PATH` to choose a different destination.
 
 ## Configure
+
+Recommended for independent repository review:
+
+```bash
+claude auth login  # if not already logged in
+python3 scripts/bigbrain_cli.py setup --claude-code
+python3 scripts/check_config.py --no-call --json
+```
+
+Requires a recent Claude Code CLI supporting `--safe-mode` (tested with 2.1.310).
+The advisor has Read/Glob/Grep only; Codex edits and runs tests. Bigbrain binds each task to a persistent native session and sends delta inputs
+using its explicit ID. See [session management and recovery](references/native-sessions.md). Existing tasks
+keep their backend/model and working directory. `BIGBRAIN_CLAUDE_MODEL` defaults
+to the CLI alias `opus`; `BIGBRAIN_MODEL` remains the legacy API model.
+Setup checks login, not generation; a real advisor call verifies model access.
+Claude CLI authentication stays with Claude Code. Existing API credentials are
+preserved, but are not forwarded by Bigbrain to the CLI. CLI environment auth
+variables still follow Claude Code's own precedence. There is no silent fallback.
+
+For backwards compatibility, configurations without a backend remain `api`.
+Set `BIGBRAIN_BACKEND=api` to explicitly use the legacy API backend.
 
 Any Anthropic-compatible Messages API works: Anthropic itself or a relay.
 
@@ -261,3 +292,40 @@ If you build on this project, please credit it with a link back to
 ## License
 
 [MIT](LICENSE) © 2026 Chris Kang (kangchainx)
+
+## Optional Codex plugin hooks
+
+This repository also contains `.codex-plugin/plugin.json` and `hooks/hooks.json`.
+A repo marketplace is provided at `.agents/plugins/marketplace.json`. Install with
+`codex plugin marketplace add /absolute/path/to/bigbrain-skill` followed by
+`codex plugin add bigbrain@bigbrain-local`, then review and trust its hooks in Codex. Installing the skill with `install.sh` does **not**
+register or trust hooks. Disable the standalone skill entry when using the plugin
+to avoid duplicate skill discovery. No installer edits global agent configuration.
+
+SessionStart and UserPromptSubmit inject the short collaboration rules from
+`references/collaboration.md`. Hooks make no paid calls, scan no task history and
+write no state. Codex interprets user feedback in conversation and invokes:
+
+```bash
+python3 scripts/bigbrain_cli.py feedback --session /path/to/task-session \
+  --reason "The same problem still does not meet the requirement" \
+  --failure-file /path/to/evidence.txt
+```
+
+The diagnosis round cannot complete the task; Codex executes the revised plan and
+submits fresh evidence with `report`. Corrections survive history compression.
+Hooks improve reminders; they cannot guarantee the model follows instructions.
+The CLI enforces completion criteria and rejects cross-chat sessions when both
+sides provide `CODEX_THREAD_ID`.
+
+Internal cost and quality audit: `python3 scripts/audit_sessions.py <session-or-root>`. This is offline and read-only. See [weekly review protocol](references/session-audit.md); scheduling belongs to the host automation.
+
+## Explicit per-chat activation
+
+Codex chats default off. Only explicit user opt-in authorizes `python3
+scripts/bigbrain_cli.py mode on`; `mode off` disables it and `mode status` reads
+it without a model call. State is keyed by CODEX_THREAD_ID, not cwd or native
+Claude session ID. Same-chat resume/compaction preserves it; new/forked chats
+start off. Mentions, complexity and repeated failures never enable it implicitly.
+Both hooks are silent when off, and live workflow commands in Codex reject new
+advisor calls. Off retains history and does not interrupt an in-flight process.

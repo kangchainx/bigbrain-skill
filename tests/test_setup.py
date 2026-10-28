@@ -258,6 +258,23 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(sum(method == "POST" for method, _ in self.server.requests), 1)
 
+    def test_api_save_switches_cli_backend_and_reports_environment_override(self):
+        for override in (False, True):
+            with self.subTest(override=override):
+                self.path.write_text('{"backend":"claude-code","BIGBRAIN_BACKEND":"claude-code"}')
+                if override:
+                    self.env['BIGBRAIN_BACKEND'] = 'claude-code'
+                else:
+                    self.env.pop('BIGBRAIN_BACKEND', None)
+                code, result = self.helper('save', model=MODELS[0])
+                self.assertEqual(code, 0)
+                saved = json.loads(self.path.read_text())
+                self.assertEqual(saved['backend'], 'api')
+                self.assertNotIn('BIGBRAIN_BACKEND', saved)
+                self.assertEqual(result['effective_backend'], 'claude-code' if override else 'api')
+                self.assertEqual(result['effective_model'], 'opus' if override else MODELS[0])
+                self.assertEqual('BIGBRAIN_BACKEND' in result['environment_overrides'], override)
+
     def test_explicit_input_wins_during_probe_but_reports_runtime_override(self):
         self.env["BIGBRAIN_BASE_URL"] = "http://127.0.0.1:9"
         self.env["BIGBRAIN_API_KEY"] = "unrelated-ambient-key"

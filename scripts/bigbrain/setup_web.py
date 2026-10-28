@@ -105,6 +105,8 @@ class SetupHandler(BaseHTTPRequestHandler):
                     selected = dict(self.server.values, model=values.get("model"))
                     result = configure(selected, save=True, timeout=self.server.api_timeout)
                     self.server.result = {"model": result["model"],
+                                          "effective_backend": result["effective_backend"],
+                                          "effective_model": result["effective_model"],
                                           "environment_overrides": result["environment_overrides"]}
                     self.reply(200, self.server.result)
                     self.server.finish()

@@ -24,6 +24,8 @@ from pathlib import Path
 from . import experience, loop, report, schema, scoring, session
 from . import status as status_mod
 from .config import (
+    DEFAULT_EFFORT,
+    EFFORT_LEVELS,
     DEFAULT_MAX_ROUNDS,
     DEFAULT_MODEL,
     EXIT_BAD_JSON,
@@ -38,7 +40,7 @@ from .config import (
     parse_weights,
     setup_command,
 )
-from .io import Progress, eprint, read_context_files
+from .io import Progress, attach_images, eprint, read_context_files
 from .session import (
     STATE_DONE,
     require_session_dir,
@@ -88,6 +90,8 @@ def config_or_fail(cfg):
 
 def host_of(cfg):
     """Just the host, for the progress line -- never the full URL."""
+    if cfg.get("backend") == "claude-code":
+        return "Claude Code CLI"
     base = cfg.get("base_url") or ""
     match = __import__("re").match(r"^https?://([^/]+)", base)
     return match.group(1) if match else base
@@ -354,7 +358,8 @@ def _close_out(session_dir, transcript, cfg, args, progress, mock_entries, mock_
 
     save_transcript(session_dir, transcript)
 
-    report.write_report(session_dir, transcript, cfg=cfg)
+    payload = report.write_report(session_dir, transcript, cfg=cfg)
+    eprint("[Bigbrain] " + report.cost_summary(payload)["message"])
     return str(Path(session_dir) / "report.json"), retrospective_metadata
 
 
@@ -365,6 +370,43 @@ def _terminal(code):
 # --------------------------------------------------------------------------
 # start / report / stuck
 # --------------------------------------------------------------------------
+
+
+def _select_effort(args, cfg, transcript, progress):
+    owner = transcript.get("codex_thread_id")
+    current = os.environ.get("CODEX_THREAD_ID")
+    if owner and current and owner != current:
+        raise BigbrainError("This Bigbrain session belongs to another Codex chat", EXIT_CONFIG)
+    effort = getattr(args, "effort", None) or transcript.get("effort", DEFAULT_EFFORT)
+    if effort not in EFFORT_LEVELS:
+        raise BigbrainError("effort must be medium, high or xhigh (maximum)", EXIT_CONFIG)
+    cfg["effort"] = transcript["effort"] = effort
+    progress.line("reasoning effort: %s" % effort)
+
+
+def _run_advisor_round(session_dir, transcript, user_content, cfg, **kwargs):
+    """Preserve known spend even when transport or JSON parsing ends a run."""
+    if not kwargs.get("dry_run"):
+        transcript["mock"] = bool(transcript.get("mock") or kwargs.get("mock_entries") is not None)
+    try:
+        return loop.run_round(session_dir, transcript, user_content, cfg, **kwargs)
+    except (BigbrainError, KeyboardInterrupt) as exc:
+        if not kwargs.get("dry_run"):
+            if not isinstance(exc, BigbrainError) or (exc.exit_code != EXIT_BAD_JSON and not exc.extra.get("known_no_charge")):
+                transcript["cost_incomplete"] = True
+            session.save_transcript(session_dir, transcript)
+            payload = report.write_report(session_dir, transcript, cfg=cfg)
+            eprint("[Bigbrain] " + report.cost_summary(payload)["message"])
+        raise
+
+
+def _emit_reply(normalised, transcript, cfg, report_path, retrospective):
+    normalised = dict(normalised, workflow_status=transcript.get("status"))
+    if normalised["status"] == "done" and transcript.get("status") != STATE_DONE:
+        normalised["status"] = "continue"
+    summary = report.cost_summary(report.build_report(transcript, cfg=cfg)) if report_path else None
+    loop.emit_final(normalised, report_path=report_path, retrospective=retrospective,
+                    cost_summary=summary)
 
 
 def _score_and_report(args, cfg, progress):
@@ -437,6 +479,7 @@ def cmd_start(args, cfg, progress):
     transcript = session.new_transcript(
         args.task.strip(), cfg, reasons=(result or {}).get("reasons")
     )
+    _select_effort(args, cfg, transcript, progress)
     transcript["escalations"] = 1
     transcript["_session"] = str(session_dir)
     if result:
@@ -457,11 +500,11 @@ def cmd_start(args, cfg, progress):
         "each with its own steps and acceptance criteria -- plus any blocking questions the "
         "repository can answer. Exactly one JSON object, no prose."
     )
-    user_content = "\n\n".join(parts)
+    user_content = attach_images("\n\n".join(parts), args.image_file)
 
     banner(progress, cfg, transcript["task"])
     mock_entries = _mock_entries(cfg, args)
-    normalised, _raw, meta, _index = loop.run_round(
+    normalised, _raw, meta, _index = _run_advisor_round(
         session_dir, transcript, user_content, cfg,
         mock_entries=mock_entries, mock_index=0, dry_run=args.dry_run, progress=progress,
     )
@@ -481,13 +524,17 @@ def cmd_start(args, cfg, progress):
             session_dir, transcript, cfg, args, progress, mock_entries, _index
         )
     # Exactly one JSON object on stdout, after every other writer has finished.
-    loop.emit_final(normalised, report_path=report_path, retrospective=retrospective)
+    _emit_reply(normalised, transcript, cfg, report_path, retrospective)
     return code
 
 
 def cmd_report(args, cfg, progress):
     session_dir = require_session_dir(args.session)
     transcript = session.load_transcript(session_dir)
+    _select_effort(args, cfg, transcript, progress)
+    if transcript.get("feedback_needs_diagnosis"):
+        raise BigbrainError("User feedback still needs advisor diagnosis; retry feedback before reporting edits",
+                            EXIT_CONFIG)
     if transcript.get("status") in (STATE_DONE, "blocked", "max-rounds") and not args.force:
         raise BigbrainError(
             "session %s already finished with status=%s; pass --force to add another round"
@@ -546,12 +593,12 @@ def cmd_report(args, cfg, progress):
         "criteria_status for every criterion you can now judge. Set status=done only when "
         "all global acceptance criteria are met and proven. Exactly one JSON object, no prose."
     )
-    user_content = "\n\n".join(parts)
+    user_content = attach_images("\n\n".join(parts), args.image_file)
 
     mock_entries = _mock_entries(cfg, args)
     mock_index = transcript.get("mock_index", len(transcript["rounds"]))
 
-    normalised, _raw, meta, index_after = loop.run_round(
+    normalised, _raw, meta, index_after = _run_advisor_round(
         session_dir, transcript, user_content, cfg,
         mock_entries=mock_entries, mock_index=mock_index, dry_run=args.dry_run, progress=progress,
     )
@@ -569,7 +616,7 @@ def cmd_report(args, cfg, progress):
         report_path, retrospective = _close_out(
             session_dir, transcript, cfg, args, progress, mock_entries, index_after
         )
-    loop.emit_final(normalised, report_path=report_path, retrospective=retrospective)
+    _emit_reply(normalised, transcript, cfg, report_path, retrospective)
     return code
 
 
@@ -582,6 +629,7 @@ def cmd_stuck(args, cfg, progress):
     """
     session_dir = require_session_dir(args.session)
     transcript = session.load_transcript(session_dir)
+    _select_effort(args, cfg, transcript, progress)
     transcript["_session"] = str(session_dir)
     transcript["escalations"] = int(transcript.get("escalations") or 0) + 1
     transcript["status"] = "stuck"
@@ -598,6 +646,25 @@ def cmd_stuck(args, cfg, progress):
         )
     if args.attempts:
         details += "\n\nAttempts already made at this step: %d" % args.attempts
+
+    feedback = args.command == "feedback"
+    if feedback:
+        corrections = transcript.setdefault("user_feedback", [])
+        corrections.append({"text": details, "round": len(transcript["rounds"]) + 1})
+        criterion = "User correction %d is resolved" % len(corrections)
+        transcript.setdefault("acceptance_criteria", []).append(criterion)
+        transcript["criteria_status"] = [
+            {"criterion": item, "met": False, "evidence": "User correction requires fresh verification"}
+            for item in transcript["acceptance_criteria"]
+        ]
+        for milestone in transcript.get("milestones") or []:
+            milestone["state"] = "pending"
+        transcript["retrospective"] = None
+        transcript["max_rounds"] = len(transcript["rounds"]) + cfg["max_rounds"]
+        transcript["feedback_needs_diagnosis"] = True
+        # Persist invalidation before calling the advisor, including on transport failure.
+        if not args.dry_run:
+            session.save_transcript(session_dir, transcript)
 
     _inject_lessons(transcript, cfg, progress)
 
@@ -618,18 +685,25 @@ def cmd_stuck(args, cfg, progress):
             )
         )
     parts.append("# FAILURE DETAILS\n%s" % details)
+    if feedback:
+        parts.append(
+            "# USER CORRECTION\nThe user reports this result still fails their requirements. "
+            "This overrides any prior completion. Inspect the cause and return a corrected plan "
+            "before Codex makes further edits. Do not declare done on this diagnosis round. "
+            "The new required acceptance criterion is: " + criterion
+        )
     parts.append(
         "# ADVISOR REQUEST\n"
         "Either give a corrected, concrete plan (status=continue), state precisely what is "
         "missing and who must supply it (status=blocked), or narrow the milestone so the "
         "executor can finish it. Exactly one JSON object, no prose."
     )
-    user_content = "\n\n".join(parts)
+    user_content = attach_images("\n\n".join(parts), args.image_file)
 
     banner(progress, cfg, "stuck: %s" % (milestone_id or "current step"))
     mock_entries = _mock_entries(cfg, args)
     mock_index = transcript.get("mock_index", len(transcript["rounds"]))
-    normalised, _raw, meta, index_after = loop.run_round(
+    normalised, _raw, meta, index_after = _run_advisor_round(
         session_dir, transcript, user_content, cfg,
         mock_entries=mock_entries, mock_index=mock_index, dry_run=args.dry_run, progress=progress,
     )
@@ -646,7 +720,39 @@ def cmd_stuck(args, cfg, progress):
         report_path, retrospective = _close_out(
             session_dir, transcript, cfg, args, progress, mock_entries, index_after
         )
-    loop.emit_final(normalised, report_path=report_path, retrospective=retrospective)
+    _emit_reply(normalised, transcript, cfg, report_path, retrospective)
+    return code
+
+
+def cmd_recover(args, cfg, progress):
+    from . import native_session as native
+
+    root = Path(args.session)
+    journal = native.read(root / native.JOURNAL)
+    current = session.load_transcript(root) if (root / "transcript.json").exists() else journal["snapshot"]
+    native.validate(native.read(root / native.STATE), current, root)
+    cfg = dict(cfg, backend="claude-code", model=current.get("model") or cfg["model"])
+    if journal["state"] == "applied" or current.get("native_applied_operation") == journal["id"]:
+        native.mark_applied(root, journal)
+        print(json.dumps({"recovered": False, "already_applied": True, "native": native.status(root)}))
+        return EXIT_OK
+    if not journal["calls"] or not all("response" in c for c in journal["calls"]):
+        raise BigbrainError("No request was resent. " + native.status(root)["next_action"], EXIT_CONFIG)
+    transcript = journal["snapshot"]
+    cfg = dict(cfg, _native_recover=True, effort=journal["effort"])
+    if journal["kind"] == loop.KIND_RETROSPECTIVE:
+        normalised, _ = loop.run_retrospective(root, transcript, cfg, progress=progress)
+        session.save_transcript(root, transcript)
+        payload = report.write_report(root, transcript, cfg=cfg)
+        payload["cost_summary"] = report.cost_summary(payload)
+        print(json.dumps(payload))
+        return EXIT_OK
+    normalised, _, _, _ = _run_advisor_round(root, transcript, journal["user_content"], cfg, progress=progress)
+    loop.absorb_reply(transcript, normalised, progress)
+    _save_reply_lessons(transcript, normalised, cfg, progress)
+    code = loop.finish(root, transcript, normalised, progress=progress)
+    report.write_report(root, transcript, cfg=cfg)
+    _emit_reply(normalised, transcript, cfg, str(root / "report.json"), None)
     return code
 
 
@@ -660,6 +766,7 @@ def cmd_finish(args, cfg, progress):
     """
     session_dir = require_session_dir(args.session)
     transcript = session.load_transcript(session_dir)
+    _select_effort(args, cfg, transcript, progress)
     transcript["_session"] = str(session_dir)
 
     if not transcript.get("retrospective") and not args.no_retrospective:
@@ -673,6 +780,8 @@ def cmd_finish(args, cfg, progress):
         session.save_transcript(session_dir, transcript)
 
     payload = report.write_report(session_dir, transcript, cfg=cfg, progress=progress)
+    payload["cost_summary"] = report.cost_summary(payload)
+    eprint("[Bigbrain] " + payload["cost_summary"]["message"])
     if args.json:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
@@ -745,6 +854,14 @@ def build_parser():
     score.add_argument("--quiet", action="store_true", help="suppress the [Bigbrain] progress lines")
 
     # -- start ---------------------------------------------------------
+    mode = sub.add_parser("mode", help="explicit chat-scoped activation; new chats default off")
+    mode.add_argument("action", choices=("on", "off", "status"))
+    mode.add_argument("--chat-id", help="defaults to CODEX_THREAD_ID; never a repository-wide setting")
+
+    recovery = sub.add_parser("recover", help="apply captured native result locally; never resend an unknown request")
+    recovery.add_argument("--session", required=True)
+    recovery.add_argument("--quiet", action="store_true")
+
     start = sub.add_parser("start", help="open a session: ask for the plan and the milestones")
     start.add_argument("--task", required=True, help="what must change, and the acceptance criteria")
     start.add_argument("--context-file", action="append", default=[], help="file to include (repeatable)")
@@ -769,7 +886,8 @@ def build_parser():
     rep.add_argument("--no-retrospective", action="store_true")
 
     # -- stuck ---------------------------------------------------------
-    stuck = sub.add_parser("stuck", help="re-escalate the current milestone with failure details")
+    stuck = sub.add_parser("stuck", aliases=["feedback"],
+                           help="diagnose failure; feedback immediately reopens a user-rejected result")
     stuck.add_argument("--session", required=True)
     stuck.add_argument("--reason", default=None, help="what failed, in one line")
     stuck.add_argument("--failure-file", default=None, help="file with the failure, error output and attempts")
@@ -780,6 +898,10 @@ def build_parser():
     stuck.add_argument("--quiet", action="store_true")
     stuck.add_argument("--no-retrospective", action="store_true")
 
+    for command in (start, rep, stuck):
+        command.add_argument("--image-file", action="append", default=[],
+                             help="attach actual PNG/JPEG/GIF/WebP pixels (repeatable; video needs frames)")
+
     # -- finish --------------------------------------------------------
     fin = sub.add_parser("finish", help="write report.md/report.json, running the retrospective if needed")
     fin.add_argument("--session", required=True)
@@ -787,6 +909,9 @@ def build_parser():
     fin.add_argument("--no-retrospective", action="store_true")
     fin.add_argument("--mock", default=None)
     fin.add_argument("--quiet", action="store_true")
+    for command in (start, rep, stuck, fin):
+        command.add_argument("--effort", choices=EFFORT_LEVELS, default=None,
+                             help="reasoning effort (new sessions: medium; otherwise retain session level)")
 
     # -- status --------------------------------------------------------
     stat = sub.add_parser("status", help="print session state")
@@ -804,6 +929,8 @@ def build_parser():
                        help="seconds to wait for the validation request (default 20)")
     setup.add_argument("--quiet", action="store_true")
     setup_action = setup.add_mutually_exclusive_group()
+    setup_action.add_argument("--claude-code", action="store_true",
+                              help="check Claude Code login and select it as the advisor backend")
     setup_action.add_argument("--web", action="store_true",
                               help="serve the local HTTPS/password setup form; print its URL")
     setup_action.add_argument("--list-models", action="store_true",
@@ -866,7 +993,9 @@ HANDLERS = {
     "start": cmd_start,
     "report": cmd_report,
     "stuck": cmd_stuck,
+    "feedback": cmd_stuck,
     "finish": cmd_finish,
+    "recover": cmd_recover,
 }
 
 
@@ -889,14 +1018,30 @@ def _merge_global_flags(args):
     return args
 
 
-def main(argv=None):
-    args = _merge_global_flags(build_parser().parse_args(argv))
-    progress = make_progress(args)
+def _dispatch(args, progress):
+    if args.command == "mode":
+        from . import activation
+        identity = activation.chat_id(args.chat_id)
+        if args.action != "status":
+            activation.set_mode(identity, args.action == "on")
+        print(json.dumps({"chat_id": identity, "enabled": activation.enabled(identity)}))
+        return EXIT_OK
 
     if args.command == "setup":
         # The wizard is how a missing configuration gets fixed, so it must run
         # before (and regardless of) the configuration check below.
         from . import setup_wizard
+
+        if args.claude_code:
+            from .claude_code import check
+
+            result = check()
+            path = setup_wizard.save_config({"backend": "claude-code"}, keys=("backend",))
+            cfg = load_config()
+            result.update(config_file=str(path), model=cfg["model"],
+                          effective_backend=cfg["backend"])
+            print(json.dumps(result))
+            return EXIT_OK if cfg["backend"] == "claude-code" else EXIT_CONFIG
 
         if args.web:
             from .setup_web import run_server
@@ -929,6 +1074,16 @@ def main(argv=None):
         return cmd_score(args, cfg, progress)
 
     cfg = load_config()
+    if args.command == "status" and getattr(args, "session", None) and not (Path(args.session) / "transcript.json").exists():
+        from . import native_session as native
+        if (Path(args.session) / native.STATE).exists():
+            print(json.dumps({"native": native.status(args.session)}))
+            return EXIT_OK
+    if args.command in ("report", "stuck", "feedback", "finish", "status") and getattr(args, "session", None):
+        saved = session.load_transcript(require_session_dir(args.session))
+        cfg = load_config(env=dict(os.environ, BIGBRAIN_BACKEND=saved.get("backend", "api"),
+                                   BIGBRAIN_MODEL=saved.get("model") or cfg["model"],
+                                   BIGBRAIN_CLAUDE_MODEL=saved.get("model") or cfg["model"]))
     if args.command == "status" and getattr(args, "audit", None):
         return cmd_status(args, cfg, progress)
     if args.command == "lessons":
@@ -936,6 +1091,8 @@ def main(argv=None):
         # must work with no endpoint configured, because the skill's very first
         # step is `lessons list` -- before check_config has been run.
         return cmd_lessons(args, cfg, progress)
+    if args.command == "recover":
+        return cmd_recover(args, cfg, progress)
     if not config_or_fail(cfg):
         return EXIT_CONFIG
 
@@ -943,6 +1100,30 @@ def main(argv=None):
     if handler is None:  # pragma: no cover - argparse already rejects these
         raise BigbrainError("unknown command %r" % args.command, EXIT_CONFIG)
     return handler(args, cfg, progress)
+
+
+def main(argv=None):
+    args = _merge_global_flags(build_parser().parse_args(argv))
+    progress = make_progress(args)
+    if (args.command in ("start", "report", "stuck", "feedback", "finish")
+            and not getattr(args, "dry_run", False)
+            and not getattr(args, "mock", None) and not os.environ.get("BIGBRAIN_MOCK")
+            and not (args.command == "finish" and getattr(args, "no_retrospective", False))):
+        from .activation import require_enabled
+        require_enabled()
+    if args.command in ("start", "report", "stuck", "feedback", "finish", "recover") and not getattr(args, "dry_run", False):
+        from . import native_session as native
+        root = resolve_session_dir(getattr(args, "session", None), create=False).resolve()
+        cfg = load_config()
+        if (root / "transcript.json").exists() or (root / native.STATE).exists() or (cfg.get("backend") == "claude-code" and not getattr(args, "mock", None)):
+            args.session = str(root)
+            with native.lock(root):
+                if args.command == "start" and (root / native.STATE).exists():
+                    raise BigbrainError("Task already has a native Claude session; use report/feedback/recover, not start --force", EXIT_CONFIG)
+                if args.command != "recover":
+                    native.guard(root)
+                return _dispatch(args, progress)
+    return _dispatch(args, progress)
 
 
 def run(argv=None):

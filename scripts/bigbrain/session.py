@@ -107,6 +107,8 @@ def new_transcript(task, cfg, cwd=None, reasons=None):
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "cwd": str(Path(cwd) if cwd else Path(os.getcwd())),
         "base_url": cfg.get("base_url"),
+        "backend": cfg.get("backend", "api"),
+        "codex_thread_id": os.environ.get("CODEX_THREAD_ID"),
         "model": cfg.get("model"),
         "max_rounds": cfg.get("max_rounds"),
         "threshold": cfg.get("threshold"),
@@ -132,7 +134,12 @@ def new_transcript(task, cfg, cwd=None, reasons=None):
 
 def save_transcript(session_dir, transcript):
     from .io import write_json
-
+    if (Path(session_dir) / "claude-session.json").exists():
+        from .native_session import checkpoint, durable_write, mark_applied
+        journal = checkpoint(session_dir, transcript)
+        durable_write(Path(session_dir) / TRANSCRIPT_FILE, transcript)
+        mark_applied(session_dir, journal)
+        return Path(session_dir) / TRANSCRIPT_FILE
     return write_json(Path(session_dir) / TRANSCRIPT_FILE, transcript)
 
 
@@ -181,6 +188,10 @@ def record_usage(transcript, usage, kind="round", model=None):
     bucket["input_tokens"] = int(bucket.get("input_tokens") or 0) + in_tokens
     bucket["output_tokens"] = int(bucket.get("output_tokens") or 0) + out_tokens
     bucket["calls"] = int(bucket.get("calls") or 0) + 1
+    if "cli_cost_usd" in usage:
+        bucket["cli_cost_usd"] = bucket.get("cli_cost_usd", 0.0) + usage["cli_cost_usd"]
+    if usage.get("cli_cost_missing"):
+        bucket["cli_cost_missing"] = True
 
     per_kind = bucket.setdefault("by_kind", {})
     entry = per_kind.setdefault(kind, {"input_tokens": 0, "output_tokens": 0, "calls": 0})
@@ -190,7 +201,7 @@ def record_usage(transcript, usage, kind="round", model=None):
 
     if usage.get("present") is False:
         bucket["usage_missing_calls"] = int(bucket.get("usage_missing_calls") or 0) + 1
-    if model:
+    for model in (usage.get("models") or []) + ([model] if model else []):
         bucket.setdefault("models", [])
         if model not in bucket["models"]:
             bucket["models"].append(model)

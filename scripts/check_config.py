@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from bigbrain.check_config import main  # noqa: E402  (path setup must come first)
+from bigbrain.check_config import run  # noqa: E402  (path setup must come first)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run())

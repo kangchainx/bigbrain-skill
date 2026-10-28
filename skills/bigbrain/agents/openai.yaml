@@ -1,0 +1,6 @@
+interface:
+  display_name: "Bigbrain"
+  short_description: "Claude collaboration, explicitly enabled per chat."
+  default_prompt: "For code review, Codex reviews first and then asks whether the user wants Claude second review; never call Claude for review without explicit consent for that scope. Enable Bigbrain for this chat only after the user's explicit opt-in, then follow its workflow. Honor mode off immediately."
+policy:
+  allow_implicit_invocation: false

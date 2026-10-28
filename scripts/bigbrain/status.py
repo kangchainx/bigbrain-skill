@@ -19,7 +19,7 @@ from .session import (
     load_transcript,
     usage_totals,
 )
-from . import schema
+from . import schema, native_session
 
 STATE_LABELS = {
     STATE_DONE: "done",
@@ -63,6 +63,7 @@ def summary(transcript, session_dir=None):
 
     return {
         "session": str(session_dir) if session_dir else None,
+        "native": native_session.status(session_dir) if session_dir else None,
         "task": transcript.get("task"),
         "model": transcript.get("model"),
         "base_url": transcript.get("base_url"),

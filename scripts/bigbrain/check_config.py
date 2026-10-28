@@ -137,6 +137,25 @@ def classify_body(json_body):
 def main(argv=None):
     args = build_parser().parse_args(argv)
     cfg = load_config()
+    if cfg.get("backend") == "claude-code":
+        from .claude_code import check, send
+
+        if args.list_models:
+            raise BigbrainError("Claude Code manages its model catalogue; use BIGBRAIN_CLAUDE_MODEL", EXIT_CONFIG)
+        if config_problems(cfg):
+            raise BigbrainError("; ".join(config_problems(cfg)), EXIT_CONFIG)
+        payload = dict(check(), ok=True, model=cfg["model"], exit_code=0)
+        if not args.no_call:
+            cfg["max_total_timeout"] = args.timeout or cfg["max_total_timeout"]
+            text, usage, meta = send(cfg, "Reply with OK only. Do not use tools.",
+                                     [{"role": "user", "content": "ping"}])
+            payload.update(usage=usage, models_used=meta["models"],
+                           reported_cost_usd=usage.get("cli_cost_usd"))
+            if meta["cli_error"] or not text.strip():
+                payload.update(ok=False, exit_code=EXIT_HTTP, error="Claude Code validation failed")
+        if not args.json and payload["ok"]:
+            print("OK: Claude Code CLI (%s)" % cfg["model"])
+        return report(payload, args.json, payload["ok"])
     base_url = cfg["base_url"]
     model = cfg["model"] or DEFAULT_MODEL
 

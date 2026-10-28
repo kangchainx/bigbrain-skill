@@ -43,6 +43,8 @@ import urllib.request
 
 from .config import (
     ANTHROPIC_VERSION,
+    DEFAULT_EFFORT,
+    EFFORT_LEVELS,
     DEFAULT_MAX_TOTAL_TIMEOUT,
     DEFAULT_RETRIES,
     DEFAULT_RETRY_BACKOFF,
@@ -295,11 +297,16 @@ def build_payload(cfg, system_prompt, messages, model=None, max_tokens=None):
     what went on the wire; ``BIGBRAIN_STREAM=0`` omits it entirely rather than
     sending ``false``, because some relays reject an unknown field.
     """
+    effort = cfg.get("effort", DEFAULT_EFFORT)
+    if effort not in EFFORT_LEVELS:
+        raise BigbrainError("effort must be medium, high or xhigh (maximum)", EXIT_CONFIG)
     payload = {
         "model": model or cfg.get("model"),
         "max_tokens": max_tokens or cfg.get("max_tokens"),
         "system": system_prompt,
         "messages": messages,
+        "thinking": {"type": "adaptive"},
+        "output_config": {"effort": effort},
     }
     if prompt_cache_enabled(cfg):
         payload["system"] = [
@@ -308,6 +315,12 @@ def build_payload(cfg, system_prompt, messages, model=None, max_tokens=None):
         payload["messages"] = _cache_first_user(messages)
     if cfg.get("stream", DEFAULT_STREAM):
         payload["stream"] = True
+    if any(isinstance(m.get("content"), list) and
+           any(b.get("type") == "image" for b in m["content"] if isinstance(b, dict))
+           for m in messages):
+        if len(json.dumps(payload).encode("utf-8")) > 30_000_000:
+            raise BigbrainError("image request exceeds 30 MB; resize or reduce attachments/history",
+                                EXIT_CONFIG)
     return payload
 
 

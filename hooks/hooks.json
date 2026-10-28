@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "startup|resume|clear|compact",
+      "hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/hooks/collaboration.py\" SessionStart", "timeout": 5}]
+    }],
+    "UserPromptSubmit": [{
+      "hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/hooks/collaboration.py\" UserPromptSubmit", "timeout": 5}]
+    }]
+  }
+}

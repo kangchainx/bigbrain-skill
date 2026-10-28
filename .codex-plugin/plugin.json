@@ -1,0 +1,14 @@
+{
+  "name": "bigbrain",
+  "version": "0.2.0",
+  "description": "Opt-in Claude planning and diagnosis for Codex, with persistent sessions and optional second review.",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "author": {
+    "name": "Chris Kang",
+    "url": "https://github.com/kangchainx"
+  },
+  "homepage": "https://github.com/kangchainx/bigbrain-skill",
+  "repository": "https://github.com/kangchainx/bigbrain-skill",
+  "license": "MIT"
+}

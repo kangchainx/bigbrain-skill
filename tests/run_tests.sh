@@ -9,6 +9,9 @@
 
 set -u
 
+# This suite is standalone; dedicated tests cover chat-scoped activation.
+unset CODEX_THREAD_ID
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SCRIPTS="$ROOT/scripts"
@@ -1294,7 +1297,7 @@ else bad "package: mock_rounds.json has the milestone schema, done, lessons and 
 
 # Stdlib only. Relative imports (`from .x import y`) are intra-package and are
 # allowed; anything else must be on the stdlib allowlist.
-ALLOWED='argparse|contextlib|json|os|re|socket|ssl|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|hmac|secrets|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass'
+ALLOWED='argparse|base64|contextlib|json|os|re|socket|ssl|sys|time|traceback|urllib|http|pathlib|threading|shutil|tempfile|typing|hashlib|hmac|secrets|difflib|copy|__future__|bigbrain|bigbrain_common|check_config|getpass|math|subprocess|signal|uuid|fcntl'
 UNEXPECTED="$(grep -rnE '^[[:space:]]*(import|from)[[:space:]]+' "$SCRIPTS" --include='*.py' \
   | grep -vE ':[0-9]+:[[:space:]]*from[[:space:]]+\.' \
   | grep -vE '(import|from)[[:space:]]+('"$ALLOWED"')([[:space:].]|$)' || true)"
@@ -1692,7 +1695,7 @@ case("setup save: config.json is mode 600", mode(path) == 0o600, oct(mode(path))
 case("setup save: ~/.bigbrain is mode 700", mode(bb) == 0o700, oct(mode(bb)))
 with open(path) as f:
     saved = json.load(f)
-case("setup save: writes base_url/api_key/model", saved == vals, sorted(saved))
+case("setup save: writes base_url/api_key/model", saved == dict(vals, backend="api"), sorted(saved))
 case("setup save: no temp files left behind", os.listdir(bb) == ["config.json"], os.listdir(bb))
 
 with open(path, "w") as f:
@@ -1773,7 +1776,7 @@ else bad "setup (piped): guided answers -> validated and saved" "rc=$rc :: $(pri
 expect_contains "setup (piped): says it found nothing" "No existing configuration found" "$out"
 expect_contains "setup (piped): strips a trailing /v1" "dropped the trailing /v1" "$out"
 expect_absent "setup (piped): never prints the key" "$SETUP_KEY" "$out"
-if "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d=={"base_url":sys.argv[2],"api_key":sys.argv[3],"model":"claude-opus-5-5"}' \
+if "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d=={"base_url":sys.argv[2],"api_key":sys.argv[3],"model":"claude-opus-5-5","backend":"api"}' \
      "$SB_CONFIG" "$SETUP_BASE" "$SETUP_KEY" 2>/dev/null
 then ok "setup (piped): config.json holds exactly what was entered"
 else bad "setup (piped): config.json holds exactly what was entered"; fi

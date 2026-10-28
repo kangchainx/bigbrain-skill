@@ -87,6 +87,9 @@ def build_report(transcript, cfg=None, session_dir=None):
     advisor_cost = advisor_cost_of(
         advisor_in, cache_write, cache_read, advisor_out, prices["advisor_in"], prices["advisor_out"]
     )
+    cli_backend = transcript.get("backend") == "claude-code" and not transcript.get("mock")
+    if cli_backend:
+        advisor_cost = usage_bucket.get("cli_cost_usd", 0.0)
 
     # The executor's own work never reaches this API, so its token volume is an
     # estimate (see session.py).  It is split into an input/output mix rather
@@ -151,6 +154,8 @@ def build_report(transcript, cfg=None, session_dir=None):
         "task": transcript.get("task"),
         "status": transcript.get("status"),
         "model": transcript.get("model"),
+        "backend": transcript.get("backend", "api"),
+        "models_used": totals["models"],
         "escalations": escalations,
         "rounds": len(rounds),
         "max_rounds": transcript.get("max_rounds"),
@@ -207,9 +212,48 @@ def build_report(transcript, cfg=None, session_dir=None):
             "savings_usd": round(savings, 6),
             "savings_pct": round(savings_pct, 2),
         },
+        "mock": bool(transcript.get("mock")),
+        "cost_incomplete": bool(transcript.get("cost_incomplete") or
+                                (cli_backend and usage_bucket.get("cli_cost_missing"))),
         "lessons_saved": int(transcript.get("lessons_saved") or 0),
         "retrospective": bool(transcript.get("retrospective")),
         "notes": _notes(totals, reasons),
+    }
+
+
+def cost_summary(payload):
+    """Advisor-only estimate for the executor's final user-facing message."""
+    tokens = payload["tokens"]
+    incomplete = bool(tokens["calls_without_usage"] or payload.get("cost_incomplete"))
+    mock = payload.get("mock", False)
+    amount = payload["cost"]["advisor_usd"]
+    label = ("includes simulated usage; mock calls have no provider charge" if mock
+             else "estimated from recorded usage")
+    cli_backend = payload.get("backend") == "claude-code"
+    if cli_backend and not mock:
+        label = "Claude Code reported estimate; not an actual subscription charge"
+    if incomplete:
+        label += "; incomplete usage, total cost unknown, total tokens unknown"
+    message = "%s: $%.6f USD (%s; %d recorded calls)." % (
+        "Claude Code advisor cost" if cli_backend else "Claude advisor API cost",
+        amount, label, tokens["calls"]
+    )
+    message += " Recorded tokens: %d input (including cache), %d output, %d total." % (
+        tokens["advisor_input"], tokens["advisor_output"], tokens["total"]
+    )
+    if not cli_backend:
+        message += " Uses configured token prices; not a Claude Code bill."
+    return {
+        "advisor_usd": amount,
+        "currency": "USD",
+        "estimated": True,
+        "incomplete": incomplete,
+        "mock": mock,
+        "calls": tokens["calls"],
+        "input_tokens": tokens["advisor_input"],
+        "output_tokens": tokens["advisor_output"],
+        "total_tokens": tokens["total"],
+        "message": message,
     }
 
 

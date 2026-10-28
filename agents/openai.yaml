@@ -1,12 +1,15 @@
 interface:
   display_name: "Bigbrain"
-  short_description: "Escalate complex coding tasks to an Opus advisor that plans in milestones, reviews, and keeps pushing until the acceptance criteria are met."
+  short_description: "Opt-in Claude collaboration for the current chat; new chats default off."
   long_description: |
-    Codex executes; the advisor directs. Bigbrain scores the task, and
+    Activate only after the user explicitly opts in for this chat. Complexity,
+    repeated failures and discussion of Bigbrain do not authorize activation.
+    Codex executes; the advisor directs. Within an enabled chat, Bigbrain scores the task, and
     escalates when the score crosses a configurable threshold -- large
     features, multi-file changes, refactors across module boundaries,
     ambiguous requirements, migrations, security or concurrency work, or a
-    task that has already failed twice.
+    task that has already failed twice. User feedback that the same issue
+    still fails requirements triggers immediate advisor diagnosis, even after DONE.
 
     On escalation the advisor returns the global acceptance criteria and a set
     of milestones, each with its own steps and criteria. The executor works one
@@ -24,11 +27,14 @@ interface:
     Bigbrain never creates or modifies an AGENTS.md or any global Codex/Claude
     configuration file; lessons apply only while the skill is active.
 
-    Requires BIGBRAIN_BASE_URL and BIGBRAIN_API_KEY; run
-    scripts/check_config.py first and refuse to escalate until it passes.
-  default_prompt: "Start with `lessons list` for prior guidance, then run `score`; escalate with `start` when it says escalate, and follow the milestone loop until DONE."
+    Select Claude Code CLI with setup --claude-code; it uses the existing Claude
+    login and read-only repository tools. The legacy API backend requires
+    BIGBRAIN_BASE_URL and BIGBRAIN_API_KEY. Run scripts/check_config.py --no-call
+    first. Show role-labelled Claude planning/review/acceptance and Codex execution
+    updates based on actual evidence, never private chain-of-thought.
+  default_prompt: "For code review, Codex reviews first and then asks whether the user wants Claude second review; never call Claude for review without explicit consent for that scope. After explicit user opt-in, enable Bigbrain only for this chat with mode on. Then load lessons, verify the backend and follow the milestone loop. Honor mode off immediately; do not activate merely because Bigbrain was mentioned."
   icon: null
   category: "developer-tools"
 
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

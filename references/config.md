@@ -1,6 +1,30 @@
 # bigbrain configuration
 
-The advisor is called over an **Anthropic-compatible Messages API**:
+## Backend selection
+
+`BIGBRAIN_BACKEND=claude-code` uses the installed `claude` executable and its own
+login. Select it persistently with `python3 scripts/bigbrain_cli.py setup --claude-code`.
+This only writes `backend` to Bigbrain config; API credentials and model settings
+are preserved. `BIGBRAIN_CLAUDE_MODEL` (JSON: `claude_model`) defaults to `opus` and
+is separate from the API model. A recent CLI with `--safe-mode` is required (tested
+with 2.1.310). `check_config.py --no-call` checks login; without it, the checker
+makes a real CLI request and reports usage/cost. No API endpoint or key is required.
+
+The CLI uses Read/Glob/Grep only and disables custom hooks/skills/MCP. Each task
+binds a native session ID: first `--session-id`, then `--resume` with delta inputs
+in the original workspace. It never uses `--continue`. See
+[native sessions](native-sessions.md) for migration, locking, recovery and cost deltas.
+`--effort` is passed explicitly; `BIGBRAIN_MAX_TOTAL_TIMEOUT`
+caps the subprocess. API token caps, streaming/retry and price settings do not
+control Claude Code. CLI failures never fall back to the API. Native Claude Code
+auth environment variables are inherited; Bigbrain does not inject saved API keys.
+A reported CLI cost is an estimate, not proof of a subscription charge.
+
+Configurations without a backend retain `api` for compatibility. A saved task
+retains the backend and model it started with. The remainder of this document
+covers the legacy API backend.
+
+The API advisor is called over an **Anthropic-compatible Messages API**:
 `POST {BIGBRAIN_BASE_URL}/v1/messages`.
 
 Every request sends both auth headers, because relays differ in which one they check:
@@ -181,6 +205,20 @@ They are normalised to sum to 1.0, so it does not matter whether yours do. A mal
 | `BIGBRAIN_EXECUTOR_PRICE_OUT` | `10` | The executor model's own output price |
 | `BIGBRAIN_EXECUTOR_TOKENS_PER_ROUND` | `25000` | Estimated executor tokens per round, for the savings baseline |
 
+Each task ends with a concise advisor-only USD estimate, including recorded JSON
+repair retries and retrospective usage. It uses these configured rates, which
+must match your provider for a useful estimate; defaults are not a live price
+lookup. Failed transport attempts without returned usage may incur charges that
+cannot be measured here. Missing usage is flagged, and mocks are labeled. This
+Messages API client does not launch Claude Code or read its billing data.
+
+Reasoning effort is selected by the executor following `SKILL.md`, using
+`start/report/stuck/finish --effort medium|high|xhigh`. New sessions default to
+medium; later commands retain the last selected level. No `max` level is allowed.
+Requests explicitly send adaptive thinking and `output_config.effort`; a provider
+that does not support them fails visibly without fallback. See the
+[Claude effort documentation](https://platform.claude.com/docs/en/build-with-claude/effort).
+
 Token counts come from the API's `usage` fields. The executor's own volume is never reported
 to this API — it runs outside the skill — so it is estimated, and the report says so.
 
@@ -264,3 +302,7 @@ Exit codes: `0` OK · `2` missing/malformed config · `3` network/DNS/timeout ·
 (401/403) · `5` model or endpoint not found (404) · `6` other HTTP error or unusable response.
 
 The key is never printed in full — only masked as `****` plus its last 4 characters.
+
+Saving verified API credentials through the setup wizard selects `backend: api`,
+including after prior Claude Code setup. An explicit `BIGBRAIN_BACKEND` environment
+override still wins; setup reports the effective backend/model and the override.

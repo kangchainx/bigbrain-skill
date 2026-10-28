@@ -49,6 +49,7 @@ from .config import (
     bigbrain_home_dir,
     json_config_path,
     json_keys,
+    load_config,
     mask_secret,
     parse_json_file,
 )
@@ -286,8 +287,12 @@ def configure(values, save=False, timeout=VALIDATE_TIMEOUT):
         overridden = ["BIGBRAIN_" + name.upper() for name in SAVED_KEYS
                       if os.environ.get("BIGBRAIN_" + name.upper())
                       and os.environ["BIGBRAIN_" + name.upper()] != cfg[name]]
+        if os.environ.get("BIGBRAIN_BACKEND") not in (None, "", "api"):
+            overridden.append("BIGBRAIN_BACKEND")
+        effective = load_config()
         result.update(model=model, generation_verified=True, config_file=str(path),
-                      environment_overrides=overridden)
+                      environment_overrides=overridden,
+                      effective_backend=effective['backend'], effective_model=effective['model'])
     return result
 
 
@@ -399,7 +404,7 @@ def _short(text, limit=200):
 # --------------------------------------------------------------------------
 
 
-def save_config(values, env=None):
+def save_config(values, env=None, keys=SAVED_KEYS):
     """Merge ``values`` into config.json, written 600 inside a 700 directory.
 
     Other keys already in the file (threshold, weights, ...) are kept.  The
@@ -428,9 +433,12 @@ def save_config(values, env=None):
         backup = path.with_name("%s.invalid-%d" % (path.name, int(time.time())))
         os.replace(path, backup)
         os.chmod(backup, 0o600)
-    for name in SAVED_KEYS:
+    for name in keys:
         data.pop("BIGBRAIN_%s" % name.upper(), None)
         data[name] = values[name]
+    if keys == SAVED_KEYS:
+        data.pop("BIGBRAIN_BACKEND", None)
+        data['backend'] = 'api'
 
     tmp = parent / (".%s.%d.tmp" % (path.name, os.getpid()))
     fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -650,6 +658,10 @@ def _save_and_report(io, chosen, env):
         var for var in ("BIGBRAIN_%s" % name.upper() for name in SAVED_KEYS)
         if env.get(var) and env[var] != chosen[var[len("BIGBRAIN_"):].lower()]
     ]
+    if env.get("BIGBRAIN_BACKEND") not in (None, "", "api"):
+        overridden.append("BIGBRAIN_BACKEND")
+    effective = load_config(env=env)
+    io.out("Effective backend: %s; model: %s" % (effective['backend'], effective['model']))
     if overridden:
         io.out("note: environment variables override config.json; still set: %s"
                % ", ".join(overridden))

@@ -1,5 +1,8 @@
 # Escalation: scoring, weights and the decision
 
+This scoring/escalation policy applies only within an explicitly enabled Bigbrain
+chat. It cannot enable Bigbrain: new chats default off; see `bigbrain_cli.py mode`.
+
 Escalate to the advisor when the work is likely to need architectural judgement, or when a
 wrong first move would be expensive to unwind. Rather than a mental checklist that drifts
 toward whatever is convenient, Bigbrain computes the decision:
@@ -102,6 +105,12 @@ The score encodes these; use them to pick the signal values honestly.
 | The user asked for the advisor | `--user-request` |
 
 ## Never escalate
+
+The trajectory rule in [collaboration](collaboration.md) overrides the numeric
+score: repeated failed attempts on the same goal require Claude before another
+speculative edit, even for a small change. Use `start --force` and record the
+evidence if no session exists; reuse `stuck`/`feedback` otherwise. Failure count
+alone is only a score component and does not automatically force escalation.
 
 These stay local — no scoring needed, they score low anyway:
 

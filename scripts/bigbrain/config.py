@@ -26,6 +26,8 @@ ANTHROPIC_VERSION = "2023-06-01"
 #: (``claude-opus-5-5``), not the dotted form -- and every provider lists its
 #: own catalogue at ``GET {base}/v1/models``.  See references/config.md.
 DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_EFFORT = "medium"
+EFFORT_LEVELS = ("medium", "high", "xhigh")
 DEFAULT_MAX_ROUNDS = 8
 #: Output budget for one advisor reply.  A real round-1 plan (3 milestones plus
 #: global criteria) runs to several thousand tokens, and a reply that hits the
@@ -413,7 +415,11 @@ def load_config(env=None, config_file=None, json_file=None):
                 break
     sources["api_key"] = src
 
+    backend, _ = raw("BIGBRAIN_BACKEND", "api")
+    cli_model, _ = raw("BIGBRAIN_CLAUDE_MODEL", "opus")
     model, src = raw("BIGBRAIN_MODEL", DEFAULT_MODEL)
+    if backend == "claude-code":
+        model, src = cli_model, "claude-code"
     sources["model"] = src
 
     max_rounds_raw, _ = raw("BIGBRAIN_MAX_ROUNDS")
@@ -429,6 +435,7 @@ def load_config(env=None, config_file=None, json_file=None):
     weights_raw, weights_src = raw("BIGBRAIN_WEIGHTS")
 
     cfg = {
+        "backend": backend,
         "base_url": (base_url or "").strip().rstrip("/"),
         "api_key": (api_key or "").strip(),
         "model": (model or DEFAULT_MODEL).strip(),
@@ -519,6 +526,10 @@ def load_config(env=None, config_file=None, json_file=None):
 def validate_config(cfg):
     """Return a list of human-readable configuration problems (may be empty)."""
     problems = []
+    if cfg.get("backend", "api") not in ("api", "claude-code"):
+        return ["BIGBRAIN_BACKEND must be api or claude-code"]
+    if cfg.get("backend") == "claude-code":
+        return problems
     base = cfg.get("base_url") or ""
     if not base:
         problems.append(
