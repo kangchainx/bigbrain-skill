@@ -1,165 +1,170 @@
-# Bigbrain
+<div align="center">
+  <h1>Bigbrain</h1>
+  <p><a href="README.md">English</a> · <strong>简体中文</strong> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
+  <p>
+    <a href="https://github.com/kangchainx/bigbrain-skill/actions/workflows/tests.yml"><img alt="Tests" src="https://github.com/kangchainx/bigbrain-skill/actions/workflows/tests.yml/badge.svg"></a>
+    <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-64748b.svg"></a>
+    <a href="https://www.python.org/"><img alt="Python standard library" src="https://img.shields.io/badge/Python-stdlib_only-3776ab.svg"></a>
+  </p>
+</div>
 
-**Claude 协助计划，Codex 执行并默认审查；Claude 复审由用户选择。** 一个 agent skill：日常工作由 Codex 完成，只有任务足够复杂时才请 Opus
-顾问出场；之后按里程碑推进，直到验收标准真正全部满足。
+在 Codex 聊天中请 Claude 参与规划和诊断。Codex 编写代码、运行检查并审查结果；需要第二个意见时，由你决定邀请。
 
-[English](README.md) · 简体中文
+![Codex 负责落地，Claude 帮你想清楚。](docs/assets/hero.zh-CN.png)
 
-## 为什么
+**每个聊天默认关闭，由你主动开启。** 开启后，难题可以触发 Claude 规划或诊断。**Claude 代码二次审查是可选项，需要明确请求。**
 
-强模型最值钱的是**判断**：澄清需求、选方案、拆成可验证的步骤、发现"测了但没测到点子上"的测试。
-而编码过程中大部分 token 花在读文件、写代码、跑测试上。Bigbrain 把两者分开：Codex 负责执行；
-任务评分超过阈值时，升级给 Claude Code CLI（也保留 Messages API 后端），由它规划里程碑、
-审查 Codex 的真实产出并推动任务完成。简单任务完全不调用顾问。
+## 什么时候用 Bigbrain
 
-## 工作方式
+| 你遇到的情况 | Bigbrain 怎么帮忙 |
+|---|---|
+| 改动代价高，想先把方案想清楚 | 把模糊需求拆成里程碑，每一步都有可检查的验收标准。 |
+| 反复尝试，仍然卡在同一个问题 | 把失败尝试和证据交给 Claude，诊断下一步该怎么走。 |
+| 希望上下文能延续，也想掌握调用情况 | 每个任务绑定 Claude 会话，保留本地经验，并显示顾问费用估算。 |
 
-1. **评分**：根据改动文件数、需求模糊度、连续失败次数、风险标签和用户明确要求计算 0–1 分，
-   与阈值（默认 `0.6`）比较。
-2. **规划**：skill 按任务复杂度自行选择推理强度，默认中（`medium`），复杂任务用高（`high`），
-   特别困难的任务用超高（`xhigh`）；最高超高，不允许 `max`。第一轮返回全局验收标准和若干里程碑。
-3. **循环**：Codex 逐个完成里程碑并提交审查；顾问给出 approve / revise / reject。卡住时用
-   `stuck` 交出失败信息，换一种思路。
-4. **结束**：只有顾问判定 `done` **且**每条验收标准都标记为满足才会结束。随后自动复盘、保存经验，
-   并生成包含 token、成本和节省估算的报告。每次任务结束都会简短告知 Claude 顾问成本（美元估算），
-   包含已记录的评审、JSON 修复重试和复盘用量；用量缺失时明确说明总额未知。
+## 开始使用
 
-推理档位通过 `--effort medium|high|xhigh` 显式传给 CLI/API，后续轮次保留所选档位。
-CLI 后端使用 Claude Code 返回的费用估算；API 后端按返回用量和配置单价估算，都不等同于实际账单。
+需要 Codex、Python 3，以及已登录且支持 `--safe-mode` 的 Claude Code CLI（已测试版本：2.1.310）。Bigbrain 本身只使用 Python 标准库。以下命令都在克隆的仓库中执行。
 
-介入依据是同一目标的调试过程与验证证据，不是用户措辞：反复修改仍无进展时，Claude 尚未参与就用 `start --force`；已有会话用 `stuck`，用户纠正验收结果用 `feedback`。
-即使此前已完成，也会清除旧验收结论，请 Claude 先分析原因，再由 Codex 执行修正并重新送审。
-聊天中用 **Claude｜计划/审查/验收**、**Codex｜执行** 展示真实交接、结论和验证证据；
-不展示内部逐步思考，不编造双方对话。
+```bash
+git clone https://github.com/kangchainx/bigbrain-skill.git
+cd bigbrain-skill
+./install.sh --no-setup
+python3 scripts/bigbrain_cli.py setup --claude-code
+python3 scripts/check_config.py --no-call --json
+```
 
-## 安装
+如果 Claude Code 尚未登录，先运行 `claude auth login`。配置会选择后端；无调用检查只验证登录，不验证模型权限。首次实际顾问调用才会验证生成能力。
+
+然后在 Codex 聊天中说：
+
+> 这个聊天启用 Bigbrain。先帮我规划这次改动，再开始实现。
+
+想停止时，说 **“关闭这个聊天的 Bigbrain。”** 同一聊天恢复后保留开关；新建或分叉的聊天默认关闭。安装 skill 不等于启用。
+
+<details>
+<summary>其他安装方式</summary>
+
+使用 skills CLI 时，选择 Codex 作为安装目标。之后请 Codex 用 Claude Code 配置 Bigbrain；它应使用实际安装的 skill 路径，不假设存在仓库目录。
 
 ```bash
 npx skills add kangchainx/bigbrain-skill
 ```
 
-或：
+在仓库中运行 `./install.sh --copy` 可复制安装，默认使用符号链接；`--claude` 同时安装给 Claude Code；`--dir PATH` 指定目标目录。默认位置是 `${CODEX_HOME:-$HOME/.codex}/skills/bigbrain`。使用符号链接时，请保留仓库目录。
+
+</details>
+
+## 一个任务，清晰分工
+
+![一眼看懂协作分工 · 流程示意](docs/assets/flow.zh-CN.png)
+
+<p align="center"><a href="docs/assets/demo.zh-CN.mp4"><img src="docs/assets/demo.zh-CN.gif" alt="播放 24 秒双 Agent 对话（带音乐 MP4）。脚本化协作示意。" width="960"></a></p>
+
+[播放 24 秒双 Agent 对话（带音乐 MP4）。脚本化协作示意。](docs/assets/demo.zh-CN.mp4)
+
+*一眼看懂协作分工 · 流程示意*
+
+1. **你主动开启。** 任务复杂本身不会激活关闭状态的 Bigbrain。
+2. **需要时请 Claude 出主意。** 在已开启的聊天中，规划任务评分超过 `0.6` 会升级给顾问；明确请求顾问也可以触发升级。简单任务仍由 Codex 完成。
+3. **Codex 实现并首审。** 编辑文件、运行检查和首轮代码审查都由 Codex 执行。Claude 二次审查需要你的明确请求。
+4. **让证据延续。** 用户反馈可以重新打开任务，先诊断，再提供新的验证证据。顾问运行会记录 token 和费用估算。
+
+## 选择顾问后端
+
+|  | Claude Code · 推荐 | Messages API · 可选 |
+|---|---|---|
+| 认证 | Claude Code 自己的登录状态 | 服务商 API 密钥 |
+| 模型 | `BIGBRAIN_CLAUDE_MODEL`（默认 `opus`） | `BIGBRAIN_MODEL`（默认 `claude-opus-5-5`） |
+| 上下文 | 每个任务持久绑定原生会话；仅 Read/Glob/Grep | 由 Codex 提供上下文 |
+| 费用 | Claude Code 返回的估算 | 返回用量 × 配置的 token 单价 |
+
+已有任务保留创建时的后端和模型。未配置后端的旧配置为兼容起见继续使用 `api`。后端之间**不会静默切换**；模型可用性取决于你的账号或接口。
+
+<details>
+<summary>配置 Messages API 服务商</summary>
+
+在仓库中运行下面的命令打开本地配置表单。在表单中填写 HTTPS 接口、API 密钥并选择模型，不要把密钥发到聊天里。表单读取服务商模型列表，并在真实生成检查通过后才保存。
 
 ```bash
-git clone https://github.com/kangchainx/bigbrain-skill.git && cd bigbrain-skill && ./install.sh
+python3 scripts/bigbrain_cli.py setup --web
 ```
 
-安装脚本默认只安装到 `${CODEX_HOME:-$HOME/.codex}/skills/bigbrain`，不再向
-`~/.agents/skills` 安装第二份，避免 Codex 显示重复条目。指定其他目录可用 `--dir PATH`。
+流式响应和临时错误重试只适用于 API 后端。服务商还必须支持所选模型及请求的 thinking/effort 参数；仅兼容 Anthropic JSON 格式不代表一定可用。`BIGBRAIN_BASE_URL` 不带末尾 `/v1`。环境变量优先于保存的配置。详见[配置参考](references/config.md)。
 
-或一行命令：
+</details>
+
+## 由你掌控的会话
+
+- **职责分开。** Claude Code 顾问只能使用 Read/Glob/Grep，以 `--safe-mode`、严格的空 MCP 配置及禁用斜杠命令的方式启动；编辑和测试由 Codex 执行。
+- **状态保存在本地。** 经验位于 `~/.bigbrain/experience/`，任务记录位于工作区的 `.bigbrain/`。相关上下文和附件图片会发给所选顾问；本地存储不等于离线推理。
+- **不改全局指令。** Bigbrain 不修改 `AGENTS.md`、`CLAUDE.md` 或 Codex/Claude 全局配置，配置向导只写 Bigbrain 自己的配置。
+- **用量可见。** 顾问费用是估算，不是服务商账单，也不能证明订阅实际扣费；缺失用量会明确标注。节省比例还包含对执行器 token 的估算，不是性能或成本基准。
+
+## 手动使用
+
+通常由 Codex 替你执行流程。以下命令在仓库中运行，只查看聊天开关或已有任务，不调用顾问：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kangchainx/bigbrain-skill/main/install.sh \
-  | BIGBRAIN_SRC=https://github.com/kangchainx/bigbrain-skill/archive/refs/heads/main.tar.gz bash
+python3 scripts/bigbrain_cli.py mode status
+python3 scripts/bigbrain_cli.py status --session .bigbrain/my-task
 ```
 
-## 配置
+<details>
+<summary>进阶：顾问里程碑循环</summary>
 
-推荐选择 Claude Code CLI：
-
-```bash
-claude auth login  # 已登录可跳过
-python3 scripts/bigbrain_cli.py setup --claude-code
-python3 scripts/check_config.py --no-call --json
-```
-
-需要支持 `--safe-mode` 的新版 Claude Code，已在 2.1.310 上验证。配置只检查登录，
-真实顾问调用才验证模型权限。CLI 默认模型别名为 `opus`，用 `BIGBRAIN_CLAUDE_MODEL` 指定其他模型。
-Claude 只能读取和搜索仓库；Codex 负责修改、运行测试和提交差异。每个任务绑定一个持久 Claude session；
-后续用明确 ID 恢复，只发送新增证据和任务约束，不使用“最新会话”。
-已捕获的结果可通过 `recover --session DIR` 本地恢复，结果未知时禁止盲目重发。
-详见[会话管理与恢复](references/native-sessions.md)。已有任务固定原来的后端、模型和工作目录。
-Bigbrain 不把旧 API 密钥转交给 CLI；CLI 自身的认证环境变量仍按其规则生效。
-CLI 失败时不会偷偷切回 API。
-
-旧配置未指定后端时仍使用 `api`，原 API 配置会保留；也可用 `BIGBRAIN_BACKEND=api` 显式选择。
-以下表单说明仅适用于 API 后端。
-
-安装或重装后首次启用时，先说明已有配置的服务商、模型和来源，并让用户选择复用或重新配置。
-不会自动沿用旧模型；已明确选择的配置不需要每轮确认。
-日常使用只显示简短进度和任务结果，不自动打开或提供审查报告。详细记录仅在明确要求时展示。
-
-在 Codex 中让 Bigbrain 配置 API，skill 会在内置浏览器打开本机配置表单，**一次只填一项**：
-HTTPS 地址 → 密码框输入 API Key → 模型选择。无需把 Key 发到聊天里。
-
-接口返回 `claude-opus-5-5` 时首推 **Claude Opus 5.5**，其余模型放在「其他模型」中展开选择；
-不会猜测或替换模型。选定后发送一次极小的真实请求，成功才保存，失败不覆盖已有配置。
-
-```bash
-python3 ~/.codex/skills/bigbrain/scripts/bigbrain_cli.py setup --web
-```
-
-打开输出的链接，填写期间保持进程运行；保存、取消或 15 分钟后进程退出。
-详见[配置流程](references/config.md#configuration-in-codex)。需要终端向导时去掉 `--web`。
-配置只写入 `~/.bigbrain/config.json`（权限 600，目录 700），不会修改 Codex/Claude 配置。
-
-也可以直接设置环境变量（环境变量优先于 `config.json`）：
-
-```bash
-export BIGBRAIN_BASE_URL=https://api.anthropic.com   # 不要带 /v1
-export BIGBRAIN_API_KEY=sk-...
-python3 scripts/check_config.py                       # 输出 OK 后才会升级
-```
-
-其他可选变量（`BIGBRAIN_MODEL`、`BIGBRAIN_THRESHOLD`、`BIGBRAIN_MAX_ROUNDS`、价格等）见
-[`references/config.md`](references/config.md)。
-
-## 安全保证
-
-- **绝不创建或修改 `AGENTS.md`、`CLAUDE.md` 或全局 Codex/Claude 配置**，由代码中的守卫强制执行，
-  并有测试覆盖。
-- **经验只保存在本地** `~/.bigbrain/experience/`；放在 skill 目录或 git 仓库内会被拒绝。
-- **API Key 从不明文输出**，只显示为 `****` 加末 4 位。
-- 仅依赖 Python 3 标准库，无需 pip 安装。
-
-## 节省示例（来自一次真实运行）
-
-> Opus 顾问花费 **$0.85**，**2 轮**，与全部使用高价模型相比估算节省 **约 58.6%**。
-
-这只是一次运行的结果，不是基准测试；实际节省取决于任务和价格。
-
-## 作者
-
-**Chris Kang**（[@kangchainx](https://github.com/kangchainx)，"Chris不上班"）。
-如果你基于本项目进行二次开发，请注明出处并附上
-[kangchainx/bigbrain-skill](https://github.com/kangchainx/bigbrain-skill) 链接，谢谢！
-
-[MIT](LICENSE) © 2026 Chris Kang (kangchainx)
-
-## 可选的 Codex plugin hooks
-
-仓库已提供 `.codex-plugin/plugin.json` 和 `hooks/hooks.json`。仓库的 `.agents/plugins/marketplace.json` 提供本地来源：
-先运行 `codex plugin marketplace add /absolute/path/to/bigbrain-skill`，
-再运行 `codex plugin add bigbrain@bigbrain-local`，最后在 Codex 中审阅、信任 hook。普通 `install.sh` 只安装 skill，
-不会注册或自动信任 hook；使用插件时应停用独立 skill 条目，避免重复加载。
-
-SessionStart 与 UserPromptSubmit 仅在当前聊天已启用时注入简短的协作规则，不调用模型、不查找“最新任务”、
-不写状态。Codex 根据当前对话判断用户反馈，运行：
-
-```bash
-python3 scripts/bigbrain_cli.py feedback --session /path/to/task-session \
-  --reason "用户的原话" --failure-file /path/to/evidence.txt
-```
-
-诊断这一轮不能直接结束任务。Codex 按新计划执行，再用 `report` 交给 Claude 验收。
-反馈会保留在后续上下文中。Hook 是提醒机制，不能保证模型必然遵守；完成判定由 CLI
-校验验收条件。存在 `CODEX_THREAD_ID` 时还会拒绝跨聊天使用任务。
-
-内部费用与质量审计：`python3 scripts/audit_sessions.py <会话目录或根目录>`，离线只读。每周复盘流程见 [审计说明](references/session-audit.md)；定时执行由宿主自动化负责。
-
-## 按聊天启用（默认关闭）
-
-在 Codex 中，只有明确要求“本次启用 Bigbrain”才打开当前聊天的开关；
-讨论插件、任务复杂或反复调试不会自动启用。说“本次关闭 Bigbrain”会关闭。
-开关绑定 Codex 聊天 ID，与工作目录和 Claude 原生 session ID 无关。
-同一聊天恢复/压缩后保留，新建或 fork 的聊天默认关闭，其他聊天不受影响。
+明确启用后，一个任务始终使用同一个会话目录。以下命令会调用顾问；`m1.md` 应包含真实执行结果和验证证据。
 
 ```bash
 python3 scripts/bigbrain_cli.py mode on
-python3 scripts/bigbrain_cli.py mode off
-python3 scripts/bigbrain_cli.py mode status
+python3 scripts/bigbrain_cli.py lessons list --limit 10
+python3 scripts/bigbrain_cli.py start --task "..." --user-request --effort medium --session .bigbrain/my-task
+python3 scripts/bigbrain_cli.py report --session .bigbrain/my-task --result-file m1.md
+python3 scripts/bigbrain_cli.py feedback --session .bigbrain/my-task --reason "..."
 ```
 
-这些命令只改本地聊天开关，不调用模型。关闭时两个 hook 都不输出上下文，
-实际工作流命令也会拒绝新的顾问调用。不会删除历史或中断已在运行的进程。
+顾问里程碑循环只有在所有验收标准均标记满足后，才接受 `done`。这**不意味着** Codex 独立完成的代码审查必须经过 Claude 批准。默认最多 8 轮；推理强度默认 `medium`，也支持 `high` 和 `xhigh`。循环终止时通常还会调用一次顾问复盘。退出码：`0` 继续或 `DONE`；`10` 阻塞；`11` 轮次耗尽；`12` 修复后 JSON 仍无效；`2`–`6` 配置或服务商错误。
+
+</details>
+
+<details>
+<summary>可选：Codex 插件 hooks</summary>
+
+仓库包含本地插件市场。在仓库中运行以下命令注册，再到 Codex 审阅并信任 hooks。使用插件时应禁用独立 skill 入口，避免重复发现；普通 skill 安装器不会注册或信任 hooks。
+
+```bash
+codex plugin marketplace add /absolute/path/to/bigbrain-skill
+codex plugin add bigbrain@bigbrain-local
+```
+
+SessionStart 和 UserPromptSubmit 只在已开启的聊天中提醒协作规则。Hooks 不调用模型，也不能强制模型遵循所有对话规则。详见[协作约定](references/collaboration.md)与[会话恢复](references/native-sessions.md)。
+
+</details>
+
+## 常见问题
+
+**每个任务都会调用 Claude 吗？**
+
+不会。关闭时不发起新的工作流顾问调用；开启后简单任务仍可由 Codex 独立完成。关闭不会中断已经运行中的请求。
+
+**可以不调用模型，先试一下吗？**
+
+在仓库中运行 `bash examples/minimal/run.sh`。它使用预设回复，仅演示流程，不是真实审查。
+
+**怎样检查安装包的代码？**
+
+运行 `bash tests/run_tests.sh`。测试使用临时目录和本地模拟服务，不调用真实服务商。
+
+**怎样卸载？**
+
+在仓库中运行 `./install.sh --uninstall`，经验会保留。只有同时希望删除用户级 Bigbrain 存储时，才加上 `--purge`。
+
+## 进一步了解
+
+[配置与后端](references/config.md) · [升级评分规则](references/triggers.md) · [会话与恢复](references/native-sessions.md) · [本地经验](references/experience.md) · [离线费用审计](references/session-audit.md) · [参与贡献](CONTRIBUTING.md)
+
+---
+
+由 **Chris Kang**（[@kangchainx](https://github.com/kangchainx)）创建。
+
+[MIT](LICENSE) · © 2026 Chris Kang。如果你基于 Bigbrain 构建项目，欢迎链接回本仓库。

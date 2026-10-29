@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang='en' data-lang='en'>
+<head>
+<meta charset='utf-8'>
+<meta name='description' content='Bigbrain collaboration: Claude plans, Codex builds and reviews first.'>
+<title>Bigbrain flow</title>
+<link href='https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400&family=Geist:wght@400;500&family=Geist+Mono:wght@400&display=swap' rel='stylesheet'>
+<link rel='stylesheet' href='tokens.css'>
+<style>
+/* Hallmark · v2.0.0 · component: README flow still; a ruled score, no boxes, no arrows */
+.flow { padding: 56px 96px 48px; }
+.flow h2 { margin: 0 0 36px; font-size: 64px; line-height: 1.02; overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
+.score { position: relative; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: var(--rule) solid var(--color-ink); }
+.score::after { content: ''; position: absolute; left: 0; right: 0; top: 52px; border-top: var(--rule) solid var(--color-guide); }
+.score li { display: flex; flex-direction: column; gap: 12px; padding: 0 24px 4px; border-left: var(--rule) solid var(--color-rule); min-width: 0; text-wrap: balance; }
+.score li:first-child { border-left: 0; padding-left: 0; }
+.fig { height: 52px; box-sizing: border-box; padding-top: 16px; font-size: 15px; color: var(--color-muted); font-variant-numeric: tabular-nums; }
+.score p { margin: 0; font-size: 26px; line-height: 1.25; }
+.score .claude { font-variation-settings: normal; font-optical-sizing: auto; letter-spacing: 0; }
+.score .note { margin-top: 0; padding-top: 20px; font-size: 15px; }
+.score .advisory, .score .advisory + li, .score .optional, .score .optional + li { border-left-style: dashed; }
+.score .optional p.claude { color: var(--color-muted); }
+.caption { margin: 28px 0 0; }
+</style>
+</head>
+<body>
+<main class='frame flow'>
+<h2 class='claude' data-i18n='title'>One task, two voices</h2>
+<ol class='score'>
+<li><span class='fig mono'>01</span><span class='label' data-i18n='n1'>You</span><p class='codex' data-i18n='t1'>You opt in for this chat.</p></li>
+<li class='advisory'><span class='fig mono'>02</span><span class='label'>Claude</span><p class='claude' data-i18n='t2'>Claude plans the milestones, or diagnoses a stuck run.</p><p class='note label' data-i18n='x2'>For hard tasks or when you ask.</p></li>
+<li><span class='fig mono'>03</span><span class='label'>Codex</span><p class='codex' data-i18n='t3'>Codex builds, runs the tests and reviews first.</p></li>
+<li class='optional'><span class='fig mono'>04</span><span class='label'>Claude</span><p class='claude' data-i18n='t4'>Claude reviews a second time.</p><p class='note label' data-i18n='x4'>Only if you ask.</p></li>
+<li><span class='fig mono'>05</span><span class='label' data-i18n='n5'>Result</span><p class='codex' data-i18n='t5'>You get the result and the advisor cost estimate.</p></li>
+</ol>
+<p class='label caption' data-i18n='cap'>Illustrative.</p>
+</main>
+<script>
+(function () {
+var doc = document.documentElement;
+var lang = new URLSearchParams(location.search).get('lang') || doc.dataset.lang || 'en';
+var ZH = { title: '一个任务，两种声音', n1: '你', t1: '你为这个聊天开启 Bigbrain。', t2: 'Claude 规划里程碑，或诊断卡住的地方。', x2: '处理难题，或应你的明确请求。', t3: 'Codex 实现、跑测试，并完成首审。', t4: 'Claude 做第二次审查。', x4: '只在你明确要求时。', n5: '结果', t5: '你拿到结果和顾问费用估算。', cap: '示意图。' };
+if (lang === 'zh-CN') { doc.lang = 'zh-CN'; document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = ZH[el.dataset.i18n]; }); }
+document.fonts.ready.then(function () { doc.dataset.ready = '1'; });
+})();
+</script>
+</body>
+</html>

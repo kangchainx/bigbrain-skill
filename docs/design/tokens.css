@@ -1,0 +1,26 @@
+/* Hallmark · v2.0.0 · theme: Specimen (deal 2/3); scope: component (hero, flow, demo); signature: two agents set in two faces, Claude in Bodoni Moda, Codex in Geist */
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · weakest: motion pending render; README stills on oat paper; no cards, no radius, no shadow; ink blue kept to guides and the handoff rule */
+:root {
+--color-paper: oklch(96.5% 0.016 82);
+--color-paper-2: oklch(93.5% 0.02 80);
+--color-ink: oklch(17% 0.012 60);
+--color-ink-2: oklch(28% 0.014 60);
+--color-muted: oklch(49% 0.014 65);
+--color-rule: oklch(80% 0.018 75);
+--color-rule-2: oklch(66% 0.02 72);
+--color-accent: oklch(45% 0.18 262);
+--color-guide: oklch(55% 0.16 262 / 0.5);
+--font-display: 'Bodoni Moda', 'Songti SC', 'Noto Serif SC', Georgia, serif;
+--font-body: 'Geist', 'PingFang SC', 'Noto Sans SC', system-ui, sans-serif;
+--font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
+--rule: 1px;
+--display-optical: 96;
+--tracking-display: -0.02em;
+}
+html, body { margin: 0; overflow-x: clip; background: var(--color-paper); color: var(--color-ink); }
+body { font-family: var(--font-body); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+.frame { width: 1440px; box-sizing: border-box; margin: 0 auto; background: var(--color-paper); }
+.claude { font-family: var(--font-display); font-weight: 400; font-variation-settings: 'opsz' var(--display-optical); letter-spacing: var(--tracking-display); }
+.codex { font-family: var(--font-body); font-weight: 400; letter-spacing: -0.01em; }
+.label { font-family: var(--font-body); font-weight: 500; font-size: 15px; line-height: 1.3; color: var(--color-muted); }
+.mono { font-family: var(--font-mono); }

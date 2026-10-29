@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang='en' data-lang='en'>
+<head>
+<meta charset='utf-8'>
+<meta name='description' content='Bigbrain collaboration: Claude plans, Codex builds and reviews first.'>
+<title>Bigbrain hero</title>
+<link href='https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..900;1,6..96,400&family=Geist:wght@400;500&family=Geist+Mono:wght@400&display=swap' rel='stylesheet'>
+<link rel='stylesheet' href='tokens.css'>
+<style>
+/* Hallmark · v2.0.0 · component: README hero still; every colour and face comes from tokens.css */
+.hero { padding: 64px 96px 72px; display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 44px; }
+.poster { position: relative; min-width: 0; font-size: 232px; --base: 0.8em; --cap: 0.14em; --x: 0.4em; }
+.poster h1 { margin: 0; font-size: 1em; line-height: 1; overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
+.guide { position: absolute; left: 0; right: 0; border-top: var(--rule) solid var(--color-guide); }
+.guide span { position: absolute; right: 0; top: 6px; }
+.g-cap { top: var(--cap); }
+.g-x { top: var(--x); }
+.g-base { top: var(--base); }
+.voices { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 48px; border-top: var(--rule) solid var(--color-ink); padding-top: 28px; }
+.voices p { margin: 0; font-size: 48px; line-height: 1.1; }
+.foot { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); column-gap: 48px; align-items: baseline; }
+.foot .line { margin: 0; font-size: 20px; color: var(--color-ink-2); }
+.say { margin: 0; display: flex; gap: 24px; align-items: baseline; background: var(--color-paper-2); border: var(--rule) solid var(--color-rule); padding: 16px 24px; }
+.say .mono { font-size: 20px; }
+</style>
+</head>
+<body>
+<main class='frame hero'>
+<div class='poster'>
+<h1 class='claude'>Bigbrain</h1>
+<div class='guide g-cap'><span class='label' data-i18n='cap'>cap height</span></div>
+<div class='guide g-x'><span class='label' data-i18n='x'>x-height</span></div>
+<div class='guide g-base'><span class='label' data-i18n='base'>baseline</span></div>
+</div>
+<div class='voices'>
+<p class='codex' data-i18n='codex'>Codex builds.</p>
+<p class='claude' data-i18n='claude'>Claude helps you think it through.</p>
+</div>
+<div class='foot'>
+<p class='line' data-i18n='line'>Opt in per chat. A second review only when you ask.</p>
+<p class='say'><span class='label' data-i18n='say'>Say</span><span class='mono' data-i18n='prompt'>Use Bigbrain for this chat.</span></p>
+</div>
+</main>
+<script>
+(function () {
+var doc = document.documentElement;
+var lang = new URLSearchParams(location.search).get('lang') || doc.dataset.lang || 'en';
+var ZH = { codex: 'Codex 负责落地。', claude: 'Claude 帮你想清楚。', line: '每个聊天由你主动开启。二次审查，只在你开口时进行。', say: '在聊天里说', prompt: '这个聊天启用 Bigbrain。', cap: '大写高度', x: 'x 字高', base: '基线' };
+if (lang === 'zh-CN') { doc.lang = 'zh-CN'; document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = ZH[el.dataset.i18n]; }); }
+function place() {
+var h1 = document.querySelector('.poster h1'), cs = getComputedStyle(h1);
+var ctx = document.createElement('canvas').getContext('2d');
+ctx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+var cap = ctx.measureText('B').actualBoundingBoxAscent, x = ctx.measureText('x').actualBoundingBoxAscent;
+var m = document.createElement('span');
+m.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+h1.appendChild(m);
+var base = m.getBoundingClientRect().top - h1.getBoundingClientRect().top;
+m.remove();
+var p = h1.parentElement.style;
+p.setProperty('--base', base + 'px');
+p.setProperty('--cap', (base - cap) + 'px');
+p.setProperty('--x', (base - x) + 'px');
+doc.dataset.ready = '1';
+}
+document.fonts.ready.then(place);
+})();
+</script>
+</body>
+</html>
